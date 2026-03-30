@@ -1,0 +1,1 @@
+::: gaokao_vault.foo

@@ -1,0 +1,52 @@
+site_name: gaokao-vault
+repo_url: https://github.com/https://github.com/lifefloating/gaokao-vault
+site_url: https://https://github.com/lifefloating.github.io/gaokao-vault
+site_description: A modern full-volume Gaokao data vault: scrape, store and query comprehensive historical & latest admission data, scores, plans
+site_author: lifefloating
+edit_uri: edit/main/docs/
+repo_name: https://github.com/lifefloating/gaokao-vault
+copyright: Maintained by <a href="https://https://github.com/lifefloating.com">https://github.com/lifefloating</a>.
+
+nav:
+  - Home: index.md
+  - Modules: modules.md
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: ["src/gaokao_vault"]
+theme:
+  name: material
+  feature:
+    tabs: true
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/https://github.com/lifefloating/gaokao-vault
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/gaokao-vault
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
