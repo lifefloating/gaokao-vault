@@ -9,10 +9,12 @@ repos:
       - id: check-json
         exclude: ^.devcontainer/devcontainer.json
       - id: pretty-format-json
-        exclude: ^.devcontainer/devcontainer.json
+        exclude: ^(.devcontainer/devcontainer.json|skills/scrapling-official/)
         args: [--autofix, --no-sort-keys]
       - id: end-of-file-fixer
+        exclude: ^skills/scrapling-official/
       - id: trailing-whitespace
+        exclude: ^skills/scrapling-official/
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: "v0.15.6"
