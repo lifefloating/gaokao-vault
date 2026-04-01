@@ -4,9 +4,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 WORKDIR /app
 
-# Build deps for asyncpg (needs libpq headers to compile C extension)
+# Build deps for asyncpg and quickjs (C extensions need headers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc \
+    libpq-dev gcc libc-dev make \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies first (layer cache)
