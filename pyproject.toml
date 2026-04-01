@@ -17,6 +17,17 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+dependencies = [
+    "scrapling[all]>=0.4.3",
+    "asyncpg>=0.30",
+    "typer>=0.15",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "pyfreeproxy>=0.4",
+]
+
+[project.scripts]
+gaokao-vault = "gaokao_vault.cli:app"
 
 [project.urls]
 Homepage = "https://https://github.com/lifefloating.github.io/gaokao-vault/"
