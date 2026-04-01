@@ -18,12 +18,51 @@
 - 断点续爬（Ctrl+C 优雅暂停，再次启动自动恢复）
 - Typer CLI，操作简单
 
-## 快速开始
+## 快速开始（Docker Compose，推荐）
+
+无需本地安装 Python 或 PostgreSQL，一键启动：
+
+```bash
+git clone https://github.com/lifefloating/gaokao-vault.git
+cd gaokao-vault
+
+# 启动 PostgreSQL
+docker compose up -d db
+
+# 初始化数据库（建表 + 种子数据）
+docker compose run --rm crawler init-db
+
+# 全量抓取
+docker compose run --rm crawler crawl --mode full
+
+# 查看任务状态
+docker compose run --rm crawler status
+
+# 停止服务
+docker compose down
+```
+
+更多 compose 命令：
+
+```bash
+# 增量抓取
+docker compose run --rm crawler crawl --mode incremental
+
+# 指定类型
+docker compose run --rm crawler crawl --types schools majors
+
+# 单独调试某个 Spider
+docker compose run --rm crawler run-spider schools -v
+```
+
+数据持久化在 Docker volume 中（`pgdata` 存数据库，`crawl_data` 存断点文件），`docker compose down` 不会丢数据。彻底清理用 `docker compose down -v`。
+
+## 本地安装
 
 ### 环境要求
 
 - Python 3.10+
-- PostgreSQL 14+
+- PostgreSQL 18+
 - [uv](https://docs.astral.sh/uv/) 包管理器
 
 ### 安装
@@ -32,94 +71,66 @@
 git clone https://github.com/lifefloating/gaokao-vault.git
 cd gaokao-vault
 
-# 安装依赖
 uv sync
-
-# 安装 Scrapling 浏览器依赖（Stealth 模式需要）
 uv run scrapling install --force
 ```
 
 ### 配置
 
-复制并编辑环境变量：
-
 ```bash
 cp .env.example .env
+# 编辑 .env，填入你的 PostgreSQL 连接信息
 ```
 
-核心配置项（通过环境变量或 `.env` 文件）：
+核心配置项：
 
 ```bash
-# 数据库连接
-GAOKAO_DB__DSN=postgresql://user:pass@localhost:5432/gaokao_vault
+# 数据库连接（与 docker-compose 默认值一致）
+GAOKAO_DB__DSN=postgresql://gaokao:gaokao@localhost:5432/gaokao_vault
 GAOKAO_DB__POOL_MIN=5
 GAOKAO_DB__POOL_MAX=20
 
 # 代理配置（可选）
-GAOKAO_PROXY__STATIC_PROXIES=["http://user:pass@proxy1:8080"]
-GAOKAO_PROXY__USE_FREEPROXY=true
+GAOKAO_PROXY__STATIC_PROXIES=[]
+GAOKAO_PROXY__USE_FREEPROXY=false
 
 # 爬取参数
 GAOKAO_CRAWL__CONCURRENCY=5
 GAOKAO_CRAWL__BASE_DELAY=1.0
-GAOKAO_CRAWL__JITTER_RATIO=0.5
 ```
 
-### 初始化数据库
+### 使用
 
 ```bash
+# 初始化数据库（18 张表 + 种子数据）
 gaokao-vault init-db
-```
 
-这会创建 18 张表并导入省份、科类种子数据。
-
-### 运行爬虫
-
-```bash
 # 全量抓取（三阶段自动编排）
 gaokao-vault crawl --mode full
 
-# 增量抓取（仅更新有变化的数据）
+# 增量抓取（通过 content_hash 跳过未变数据）
 gaokao-vault crawl --mode incremental
 
 # 指定数据类型
 gaokao-vault crawl --types schools majors score_lines
 
 # 单独运行某个 Spider（调试用）
-gaokao-vault run-spider schools
-gaokao-vault run-spider score_segments
+gaokao-vault run-spider schools -v
 
 # 查看任务状态
 gaokao-vault status
-gaokao-vault status --limit 50
 ```
 
 ### 断点续爬
 
-爬取过程中按 `Ctrl+C` 优雅暂停，进度自动保存。再次运行相同命令即可从断点恢复。
+爬取过程中按 `Ctrl+C` 优雅暂停，进度自动保存。再次运行相同命令即可从断点恢复。按两次 `Ctrl+C` 强制停止。
 
-### 详细日志
-
-所有命令支持 `-v` 参数输出 DEBUG 级别日志：
+### 纯 Docker（不用 compose）
 
 ```bash
-gaokao-vault crawl --mode full -v
-```
-
-## Docker
-
-```bash
-# 构建镜像
 docker build -t gaokao-vault .
-
-# 初始化数据库
 docker run --rm --env-file .env gaokao-vault init-db
-
-# 全量抓取
 docker run --rm --env-file .env gaokao-vault crawl --mode full
-
-# 查看状态
-docker run --rm --env-file .env gaokao-vault status
 ```
 
 ## 三阶段编排
@@ -158,17 +169,10 @@ docker run --rm --env-file .env gaokao-vault status
 ## 开发
 
 ```bash
-# 安装开发依赖
 uv sync --group dev
-
-# 运行测试
 uv run pytest tests/ -v
-
-# 代码检查
 uv run ruff check src/
 uv run ruff format src/
-
-# pre-commit hooks
 uv run pre-commit run -a
 ```
 

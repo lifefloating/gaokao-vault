@@ -6,7 +6,7 @@
     ],
     "features": {
         "ghcr.io/devcontainers/features/postgresql:1": {
-            "version": "16"
+            "version": "18"
         }
     },
 

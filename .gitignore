@@ -216,3 +216,6 @@ plans/
 .claude/
 .clawhub/
 docs/superpowers/
+
+# Crawl checkpoint data
+crawl_data/
