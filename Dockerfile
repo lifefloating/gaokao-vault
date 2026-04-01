@@ -1,21 +1,43 @@
-# Install uv
-FROM python:3.12-slim
+# ---------- build stage ----------
+FROM python:3.12-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Change the working directory to the `app` directory
 WORKDIR /app
 
-# Copy the lockfile and `pyproject.toml` into the image
-COPY uv.lock /app/uv.lock
-COPY pyproject.toml /app/pyproject.toml
+# Build deps for asyncpg (needs libpq headers to compile C extension)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies
+# Install dependencies first (layer cache)
+COPY uv.lock pyproject.toml /app/
 RUN uv sync --frozen --no-install-project
 
-# Copy the project into the image
+# Copy source and install project
 COPY . /app
-
-# Sync the project
 RUN uv sync --frozen
 
-CMD [ "python", "gaokao_vault/foo.py" ]
+# Install Scrapling browser dependencies (Playwright chromium etc.)
+RUN uv run scrapling install --force
+
+# ---------- runtime stage ----------
+FROM python:3.12-slim
+
+# System deps: Playwright/Chromium libs + libpq for asyncpg + PostgreSQL client for debugging
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 postgresql-client \
+    libglib2.0-0 libnss3 libnspr4 libdbus-1-3 libatk1.0-0 \
+    libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libatspi2.0-0 \
+    libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 \
+    libcairo2 libasound2 libwayland-client0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=builder /app /app
+
+# Make the CLI available
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Default: show help
+ENTRYPOINT ["gaokao-vault"]
+CMD ["--help"]

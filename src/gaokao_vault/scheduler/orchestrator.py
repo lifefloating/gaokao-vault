@@ -91,8 +91,19 @@ class Orchestrator:
                 mode=self.mode,
                 config=self.config,
             )
-            spider.start()
+            # spider.start() is synchronous and manages its own event loop internally.
+            # Run it in a thread to avoid blocking the current async loop.
+            result = await asyncio.to_thread(
+                spider.start,
+                crawldir=self.config.crawl_dir,
+            )
             stats = spider.stats
+            logger.info(
+                "Spider %s completed=%s items_scraped=%d",
+                task_type,
+                result.completed,
+                result.stats.items_scraped,
+            )
         except Exception as e:
             logger.exception("Spider %s failed", task_type)
             stats = {"new": 0, "updated": 0, "unchanged": 0, "failed": 1}

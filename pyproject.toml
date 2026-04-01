@@ -31,9 +31,9 @@ dependencies = [
 gaokao-vault = "gaokao_vault.cli:app"
 
 [project.urls]
-Homepage = "https://https://github.com/lifefloating.github.io/gaokao-vault/"
-Repository = "https://github.com/https://github.com/lifefloating/gaokao-vault"
-Documentation = "https://https://github.com/lifefloating.github.io/gaokao-vault/"
+Homepage = "https://github.com/lifefloating/gaokao-vault"
+Repository = "https://github.com/lifefloating/gaokao-vault"
+Documentation = "https://lifefloating.github.io/gaokao-vault/"
 
 [dependency-groups]
 dev = [

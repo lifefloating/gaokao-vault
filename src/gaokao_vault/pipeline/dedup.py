@@ -26,6 +26,26 @@ TABLE_MAP: dict[str, tuple[str, str, list[str]]] = {
         "province_id = $1 AND year = $2 AND batch = $3",
         ["province_id", "year", "batch"],
     ),
+    "enrollment_plans": (
+        "enrollment_plans",
+        "school_id = $1 AND province_id = $2 AND year = $3 AND major_name = $4",
+        ["school_id", "province_id", "year", "major_name"],
+    ),
+    "special_enrollments": (
+        "special_enrollments",
+        "enrollment_type = $1 AND school_id = $2 AND year = $3",
+        ["enrollment_type", "school_id", "year"],
+    ),
+    "announcements": (
+        "provincial_announcements",
+        "province_id = $1 AND title = $2",
+        ["province_id", "title"],
+    ),
+    "major_interpretations": (
+        "major_interpretations",
+        "major_id = $1 AND title = $2",
+        ["major_id", "title"],
+    ),
 }
 
 
@@ -56,8 +76,11 @@ async def deduplicate_and_persist(
         if existing_id is None:
             if upsert_fn:
                 entity_id = await upsert_fn(conn, item)
+            elif mapping:
+                # No upsert_fn and no existing record — cannot insert without upsert_fn
+                return "failed"
             else:
-                entity_id = existing_id or 0
+                return "failed"
             await insert_snapshot(conn, crawl_task_id, entity_type, entity_id, content_hash, "new")
             return "new"
 

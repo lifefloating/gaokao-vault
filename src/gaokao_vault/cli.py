@@ -47,6 +47,9 @@ def crawl(
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
     """Run crawl with three-phase orchestration."""
+    if mode not in ("full", "incremental"):
+        typer.echo(f"Invalid mode '{mode}'. Must be 'full' or 'incremental'.", err=True)
+        raise typer.Exit(code=1)
     _setup_logging(verbose)
 
     async def _run():

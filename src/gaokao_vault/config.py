@@ -30,6 +30,7 @@ class CrawlConfig(BaseSettings):
     batch_size: int = 500
     max_blocked_retries: int = 3
     crawl_dir: str = "./crawl_data"
+    year_start: int = 2015
 
 
 class AppConfig(BaseSettings):

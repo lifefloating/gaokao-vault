@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 import asyncpg
 from scrapling.fetchers import AsyncStealthySession, FetcherSession
@@ -15,16 +15,32 @@ from gaokao_vault.pipeline.hasher import compute_content_hash
 
 logger = logging.getLogger(__name__)
 
+# HTTP status codes that indicate the request was blocked
+BLOCKED_STATUS_CODES = {401, 403, 407, 429, 444, 500, 502, 503, 504}
+# Content patterns that indicate anti-bot blocking on gaokao.chsi.com.cn
+BLOCKED_CONTENT_PATTERNS = [
+    "访问过于频繁",
+    "请输入验证码",
+    "access denied",
+    "rate limit",
+    "请稍后再试",
+    "系统繁忙",
+]
+
 
 class BaseGaokaoSpider(Spider):
     name: str = "base"
     task_type: str = ""
     start_urls: list[str] = []  # noqa: RUF012
 
+    # Scrapling concurrency settings
     concurrent_requests = 5
     concurrent_requests_per_domain = 3
     download_delay = 1.0
     max_blocked_retries = 3
+
+    # Restrict crawling to the target domain
+    allowed_domains: ClassVar[set[str]] = {"gaokao.chsi.com.cn"}
 
     def __init__(
         self,
@@ -59,16 +75,28 @@ class BaseGaokaoSpider(Spider):
             AsyncStealthySession(
                 headless=True,
                 block_webrtc=True,
-                humanize=True,
                 proxy_rotator=rotator,
             ),
             lazy=True,
         )
 
+    async def is_blocked(self, response: Response) -> bool:
+        """Detect anti-bot blocking from gaokao.chsi.com.cn."""
+        if response.status in BLOCKED_STATUS_CODES:
+            return True
+
+        body = response.body.decode("utf-8", errors="ignore").lower()
+        return any(pattern in body for pattern in BLOCKED_CONTENT_PATTERNS)
+
     async def retry_blocked_request(self, request: Request, response: Response) -> Request:
+        """Switch to stealth session on block detection."""
         request.sid = "stealth"
-        logger.warning("Blocked on %s, switching to stealth", request.url)
+        logger.warning("Blocked on %s (status=%s), switching to stealth", request.url, response.status)
         return request
+
+    async def on_error(self, request: Request, error: Exception) -> None:
+        """Log request-level errors for debugging."""
+        logger.error("Request failed: %s — %s: %s", request.url, type(error).__name__, error)
 
     async def process_item(self, item: dict[str, Any], entity_type: str, unique_keys: dict, upsert_fn=None) -> str:
         content_hash = compute_content_hash(item)
@@ -83,7 +111,7 @@ class BaseGaokaoSpider(Spider):
                 upsert_fn=upsert_fn,
             )
         except Exception:
-            logger.exception("Failed to persist item for %s", entity_type)
+            logger.exception("Failed to persist item for %s: keys=%s", entity_type, unique_keys)
             self.stats["failed"] += 1
             return "failed"
         else:
