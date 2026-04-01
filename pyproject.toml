@@ -24,6 +24,7 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "pyfreeproxy>=0.4",
+    "fake-useragent>=2.0",
 ]
 
 [project.scripts]
