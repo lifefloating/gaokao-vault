@@ -28,12 +28,11 @@ class ScoreLineSpider(BaseGaokaoSpider):
     async def start_requests(self):
         for province_id in PROVINCE_IDS:
             for year in range(YEAR_START, YEAR_END + 1):
-                url = f"{BASE_URL}/z/gkbmfslq/pcx.jsp"
+                url = f"{BASE_URL}/z/gkbmfslq/pcx.jsp?provinceId={province_id}&year={year}"
                 yield Request(
                     url,
                     callback=self.parse,
                     meta={"province_id": province_id, "year": year},
-                    params={"provinceId": str(province_id), "year": str(year)},
                 )
 
     async def parse(self, response: Response):

@@ -324,7 +324,6 @@ class TestPhaseOrderingPreservation:
             TaskType.MAJORS,
             TaskType.SCORE_LINES,
             TaskType.TIMELINES,
-            TaskType.ANNOUNCEMENTS,
         }
         assert set(PHASE2_TYPES) == expected
 

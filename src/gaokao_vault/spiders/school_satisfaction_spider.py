@@ -27,12 +27,11 @@ class SchoolSatisfactionSpider(BaseGaokaoSpider):
         for row in rows:
             school_id = row["id"]
             sch_id = row["sch_id"]
-            url = f"{BASE_URL}/zyk/pub/myd/"
+            url = f"{BASE_URL}/zyk/pub/myd/?schId={sch_id}&type=school"
             yield Request(
                 url,
                 callback=self.parse,
                 meta={"school_id": school_id},
-                params={"schId": str(sch_id), "type": "school"},
             )
 
     async def parse(self, response: Response):

@@ -48,16 +48,11 @@ class ScoreSegmentSpider(BaseGaokaoSpider):
     async def start_requests(self):
         for province_id in PROVINCE_IDS:
             for year in range(YEAR_START, YEAR_END + 1):
-                url = f"{BASE_URL}/gkxx/zc/ss/"
+                url = f"{BASE_URL}/gkxx/zc/ss/?provinceId={province_id}&year={year}&type=segment"
                 yield Request(
                     url,
                     callback=self.parse,
                     meta={"province_id": province_id, "year": year},
-                    params={
-                        "provinceId": str(province_id),
-                        "year": str(year),
-                        "type": "segment",
-                    },
                 )
 
     async def parse(self, response: Response):

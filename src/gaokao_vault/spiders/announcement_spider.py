@@ -25,12 +25,11 @@ class AnnouncementSpider(BaseGaokaoSpider):
 
     async def start_requests(self):
         for province_id in PROVINCE_IDS:
-            url = f"{BASE_URL}/gkxx/zc/ss/"
+            url = f"{BASE_URL}/gkxx/zc/ss/?provinceId={province_id}&page=1"
             yield Request(
                 url,
                 callback=self.parse,
                 meta={"province_id": province_id, "page": 1},
-                params={"provinceId": str(province_id), "page": "1"},
             )
 
     async def parse(self, response: Response):
@@ -95,12 +94,11 @@ class AnnouncementSpider(BaseGaokaoSpider):
         # Pagination: follow next page if items were found
         if items_found and current_page < MAX_PAGES:
             next_page = current_page + 1
-            url = f"{BASE_URL}/gkxx/zc/ss/"
+            url = f"{BASE_URL}/gkxx/zc/ss/?provinceId={province_id}&page={next_page}"
             yield Request(
                 url,
                 callback=self.parse,
                 meta={"province_id": province_id, "page": next_page},
-                params={"provinceId": str(province_id), "page": str(next_page)},
             )
 
     async def parse_detail(self, response: Response):

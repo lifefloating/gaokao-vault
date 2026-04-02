@@ -27,12 +27,11 @@ class MajorSpider(BaseGaokaoSpider):
 
     async def start_requests(self):
         for level in EDUCATION_LEVELS:
-            url = f"{BASE_URL}/zyk/zybk/"
+            url = f"{BASE_URL}/zyk/zybk/?eduLevel={level}"
             yield Request(
                 url,
                 callback=self.parse_categories,
                 meta={"education_level": level},
-                params={"eduLevel": level},
             )
 
     async def parse_categories(self, response: Response):

@@ -217,6 +217,7 @@ plans/
 .clawhub/
 docs/superpowers/
 .kiro/
+.playwright-mcp/
 
 # Crawl checkpoint data
 crawl_data/

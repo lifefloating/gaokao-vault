@@ -31,6 +31,7 @@ class CrawlConfig(BaseSettings):
     max_blocked_retries: int = 3
     crawl_dir: str = "./crawl_data"
     year_start: int = 2015
+    rs_wait_ms: int = 10000  # Wait time (ms) for RS anti-bot JS challenge
 
 
 class AppConfig(BaseSettings):

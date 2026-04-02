@@ -25,12 +25,11 @@ class TimelineSpider(BaseGaokaoSpider):
     async def start_requests(self):
         current_year = datetime.now().year
         for province_id in PROVINCE_IDS:
-            url = f"{BASE_URL}/z/gkbmfslq/zytb.jsp"
+            url = f"{BASE_URL}/z/gkbmfslq/zytb.jsp?provinceId={province_id}&year={current_year}"
             yield Request(
                 url,
                 callback=self.parse,
                 meta={"province_id": province_id, "year": current_year},
-                params={"provinceId": str(province_id), "year": str(current_year)},
             )
 
     async def parse(self, response: Response):

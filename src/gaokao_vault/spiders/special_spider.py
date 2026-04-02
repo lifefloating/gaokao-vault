@@ -36,12 +36,11 @@ class SpecialSpider(BaseGaokaoSpider):
 
     async def start_requests(self):
         for etype in ENROLLMENT_TYPES:
-            url = f"{BASE_URL}/gkxx/tsbm/"
+            url = f"{BASE_URL}/gkxx/tsbm/?type={etype}&page=1"
             yield Request(
                 url,
                 callback=self.parse,
                 meta={"enrollment_type": etype, "page": 1},
-                params={"type": etype, "page": "1"},
             )
 
     async def parse(self, response: Response):
@@ -103,12 +102,11 @@ class SpecialSpider(BaseGaokaoSpider):
 
         if items_found and current_page < MAX_PAGES:
             next_page = current_page + 1
-            url = f"{BASE_URL}/gkxx/tsbm/"
+            url = f"{BASE_URL}/gkxx/tsbm/?type={etype}&page={next_page}"
             yield Request(
                 url,
                 callback=self.parse,
                 meta={"enrollment_type": etype, "page": next_page},
-                params={"type": etype, "page": str(next_page)},
             )
 
     async def parse_detail(self, response: Response):

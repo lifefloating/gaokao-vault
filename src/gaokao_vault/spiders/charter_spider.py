@@ -64,12 +64,11 @@ class CharterSpider(BaseGaokaoSpider):
 
         if items_found and current_page < MAX_PAGES:
             next_page = current_page + 1
-            url = f"{BASE_URL}/zsgs/zhangcheng/"
+            url = f"{BASE_URL}/zsgs/zhangcheng/?page={next_page}"
             yield Request(
                 url,
                 callback=self.parse,
                 meta={"page": next_page},
-                params={"page": str(next_page)},
             )
 
     async def parse_detail(self, response: Response):

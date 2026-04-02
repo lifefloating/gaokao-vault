@@ -62,12 +62,11 @@ class InterpretationSpider(BaseGaokaoSpider):
 
         if items_found and current_page < MAX_PAGES:
             next_page = current_page + 1
-            url = f"{BASE_URL}/zyk/zybk/zyjd/"
+            url = f"{BASE_URL}/zyk/zybk/zyjd/?page={next_page}"
             yield Request(
                 url,
                 callback=self.parse,
                 meta={"page": next_page},
-                params={"page": str(next_page)},
             )
 
     async def parse_detail(self, response: Response):

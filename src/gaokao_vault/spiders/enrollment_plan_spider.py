@@ -36,7 +36,9 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
             sch_id = row["sch_id"]
             for province_id in PROVINCE_IDS:
                 for year in range(YEAR_START, YEAR_END + 1):
-                    url = f"{BASE_URL}/sch/schoolInfo--schId-{sch_id}.dhtml"
+                    url = (
+                        f"{BASE_URL}/sch/schoolInfo--schId-{sch_id}.dhtml?provinceId={province_id}&year={year}&tab=plan"
+                    )
                     yield Request(
                         url,
                         callback=self.parse,
@@ -44,11 +46,6 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
                             "school_id": school_id,
                             "province_id": province_id,
                             "year": year,
-                        },
-                        params={
-                            "provinceId": str(province_id),
-                            "year": str(year),
-                            "tab": "plan",
                         },
                     )
 

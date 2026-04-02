@@ -29,7 +29,6 @@ PHASE2_TYPES = [
     TaskType.MAJORS,
     TaskType.SCORE_LINES,
     TaskType.TIMELINES,
-    TaskType.ANNOUNCEMENTS,
 ]
 
 PHASE3_TYPES = [

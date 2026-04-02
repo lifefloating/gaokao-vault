@@ -57,11 +57,13 @@ class BaseGaokaoSpider(Spider):
         self.crawl_task_id = crawl_task_id
         self.mode = mode
         self._stats: dict[str, int] = {"new": 0, "updated": 0, "unchanged": 0, "failed": 0}
+        self._rs_wait_ms = 10000  # default RS wait
 
         if config:
             self.concurrent_requests = config.concurrency
             self.concurrent_requests_per_domain = config.concurrency_per_domain
             self.download_delay = config.base_delay
+            self._rs_wait_ms = config.rs_wait_ms
 
     async def _get_pool(self) -> asyncpg.Pool:
         """Lazily create a local asyncpg pool bound to the current event loop."""
@@ -78,6 +80,8 @@ class BaseGaokaoSpider(Spider):
                 google_search=False,
                 block_webrtc=True,
                 hide_canvas=True,
+                network_idle=True,
+                wait=self._rs_wait_ms,
                 extra_headers={"Referer": "https://gaokao.chsi.com.cn/"},
                 additional_args={"viewport": {"width": 1366, "height": 768}},
                 impersonate=cast(Any, IMPERSONATE_LIST),
@@ -91,6 +95,8 @@ class BaseGaokaoSpider(Spider):
                 google_search=False,
                 block_webrtc=True,
                 hide_canvas=True,
+                network_idle=True,
+                wait=self._rs_wait_ms,
                 extra_headers={"Referer": "https://gaokao.chsi.com.cn/"},
                 additional_args={"viewport": {"width": 1366, "height": 768}},
                 impersonate=cast(Any, IMPERSONATE_LIST),
