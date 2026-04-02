@@ -209,3 +209,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+# AI
+plans/
+.claude/
+.clawhub/
+docs/superpowers/
+
+# Crawl checkpoint data
+crawl_data/
