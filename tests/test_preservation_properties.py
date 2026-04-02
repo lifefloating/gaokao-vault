@@ -126,7 +126,7 @@ class TestDedupClassificationPreservation:
 
         conn.fetchrow.side_effect = _fetchrow_side_effect
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             deduplicate_and_persist(
                 db_pool=pool,
                 entity_type=entity_type,
@@ -171,7 +171,7 @@ class TestDedupClassificationPreservation:
 
         conn.fetchrow.side_effect = _fetchrow_side_effect
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             deduplicate_and_persist(
                 db_pool=pool,
                 entity_type=entity_type,
@@ -220,7 +220,7 @@ class TestDedupClassificationPreservation:
 
         conn.fetchrow.side_effect = _fetchrow_side_effect
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             deduplicate_and_persist(
                 db_pool=pool,
                 entity_type=entity_type,
@@ -265,7 +265,7 @@ class TestStatsUpdatePreservation:
 
         task_id = 42
 
-        asyncio.get_event_loop().run_until_complete(update_task_stats(pool, task_id, stats, error))
+        asyncio.run(update_task_stats(pool, task_id, stats, error))
 
         # Verify conn.execute was called with correct args
         conn.execute.assert_awaited_once()
@@ -363,7 +363,7 @@ class TestPhaseOrderingPreservation:
 
         orch._run_phase = _mock_run_phase  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
 
-        asyncio.get_event_loop().run_until_complete(orch.run_all())
+        asyncio.run(orch.run_all())
 
         assert len(phase_calls) == 2
         assert phase_calls[0] == [t.value for t in PHASE2_TYPES]
@@ -399,7 +399,7 @@ class TestSpiderExceptionHandlingPreservation:
             "gaokao_vault.spiders.base.deduplicate_and_persist",
             new=AsyncMock(side_effect=RuntimeError("DB error")),
         ):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 spider.process_item(
                     item={"name": "test"},
                     entity_type="schools",
@@ -433,7 +433,7 @@ class TestSpiderExceptionHandlingPreservation:
                 "gaokao_vault.spiders.base.deduplicate_and_persist",
                 new=AsyncMock(return_value=change_type),
             ):
-                result = asyncio.get_event_loop().run_until_complete(
+                result = asyncio.run(
                     spider.process_item(
                         item={"name": "test"},
                         entity_type="schools",
@@ -465,7 +465,7 @@ class TestSpiderExceptionHandlingPreservation:
             "gaokao_vault.scheduler.orchestrator.SPIDER_MAP",
             {"schools": MagicMock(side_effect=RuntimeError("Spider init failed"))},
         ):
-            stats = asyncio.get_event_loop().run_until_complete(orch.run_single("schools"))
+            stats = asyncio.run(orch.run_single("schools"))
 
         assert stats["failed"] == 1
         orch.task_manager.finish_task.assert_awaited_once()
@@ -499,10 +499,8 @@ class TestCreatePoolSingletonPreservation:
             # Reset singleton
             conn_mod._pool = None
 
-            with patch(
-                "asyncpg.create_pool",
-                new=AsyncMock(return_value=mock_pool),
-            ):
+            mock_create = AsyncMock(return_value=mock_pool)
+            with patch("asyncpg.create_pool", new=mock_create):
                 from gaokao_vault.config import DatabaseConfig
                 from gaokao_vault.db.connection import create_pool
 
@@ -512,12 +510,16 @@ class TestCreatePoolSingletonPreservation:
                     pool_max=2,
                 )
 
-                pool1 = asyncio.get_event_loop().run_until_complete(create_pool(config))
-                pool2 = asyncio.get_event_loop().run_until_complete(create_pool(config))
+                async def _run() -> tuple:
+                    p1 = await create_pool(config)
+                    p2 = await create_pool(config)
+                    return p1, p2
+
+                pool1, pool2 = asyncio.run(_run())
 
                 assert pool1 is pool2
-                # asyncpg.create_pool should only be called once
-                assert asyncpg_create_pool_call_count(mock_pool) or pool1 is pool2
+                # asyncpg.create_pool must only be called once (singleton)
+                assert mock_create.call_count == 1
         finally:
             conn_mod._pool = original_pool
 
@@ -556,21 +558,18 @@ class TestCreatePoolSingletonPreservation:
                     pool_max=2,
                 )
 
-                loop = asyncio.get_event_loop()
+                async def _run() -> tuple:
+                    p1 = await create_pool(config)
+                    assert p1 is mock_pool1
 
-                p1 = loop.run_until_complete(create_pool(config))
-                assert p1 is mock_pool1
+                    await close_pool()
+                    assert conn_mod._pool is None
 
-                loop.run_until_complete(close_pool())
-                assert conn_mod._pool is None
+                    p2 = await create_pool(config)
+                    return p1, p2
 
-                p2 = loop.run_until_complete(create_pool(config))
+                p1, p2 = asyncio.run(_run())
                 assert p2 is mock_pool2
                 assert p1 is not p2
         finally:
             conn_mod._pool = original_pool
-
-
-def asyncpg_create_pool_call_count(mock_pool):
-    """Helper — always returns True; the real assertion is pool1 is pool2."""
-    return True
