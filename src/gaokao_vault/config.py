@@ -23,9 +23,9 @@ class ProxyConfig(BaseSettings):
 class CrawlConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="GAOKAO_CRAWL__")
 
-    concurrency: int = 5
-    concurrency_per_domain: int = 3
-    base_delay: float = 1.0
+    concurrency: int = 2
+    concurrency_per_domain: int = 1
+    base_delay: float = 2.0
     jitter_ratio: float = 0.5
     batch_size: int = 500
     max_blocked_retries: int = 3

@@ -21,9 +21,23 @@ class SchoolSpider(BaseGaokaoSpider):
     task_type: str = TaskType.SCHOOLS
 
     async def start_requests(self):
+        # Warmup: visit the list page first to establish Cookie/session state
+        warmup_url = (
+            f"{BASE_URL}/sch/search--ss-on,searchType-1,dataType-2,"
+            "schName-,schProvince-,schAddress-,schType-,xlcc-,yxls-,"
+            "dual-,naession-,f211-,f985-,autonomy-,central-,start-0.dhtml"
+        )
+        yield Request(warmup_url, callback=self.parse_warmup)
+
         for sch_id in range(1, MAX_SCH_ID + 1):
             url = f"{BASE_URL}/sch/schoolInfo--schId-{sch_id}.dhtml"
             yield Request(url, callback=self.parse, meta={"sch_id": sch_id})
+
+    async def parse_warmup(self, response):
+        """Handle warmup response — just log and return."""
+        logger.info("Warmup request completed: status=%s url=%s", response.status, response.url)
+        return
+        yield  # make this an async generator to satisfy Request callback type
 
     async def parse(self, response: Response):
         if response.status == 404:

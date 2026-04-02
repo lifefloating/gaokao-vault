@@ -4,7 +4,7 @@ import logging
 from typing import Any, ClassVar, cast
 
 import asyncpg
-from scrapling.fetchers import AsyncStealthySession, FetcherSession
+from scrapling.fetchers import AsyncStealthySession
 from scrapling.spiders import Request, Response, Spider
 
 from gaokao_vault.anti_detect.proxy_pool import get_proxy_rotator
@@ -17,7 +17,7 @@ from gaokao_vault.pipeline.hasher import compute_content_hash
 logger = logging.getLogger(__name__)
 
 # HTTP status codes that indicate the request was blocked
-BLOCKED_STATUS_CODES = {401, 403, 407, 429, 444, 500, 502, 503, 504}
+BLOCKED_STATUS_CODES = {401, 403, 407, 412, 429, 444, 500, 502, 503, 504}
 # Content patterns that indicate anti-bot blocking on gaokao.chsi.com.cn
 BLOCKED_CONTENT_PATTERNS = [
     "访问过于频繁",
@@ -35,9 +35,9 @@ class BaseGaokaoSpider(Spider):
     start_urls: list[str] = []  # noqa: RUF012
 
     # Scrapling concurrency settings
-    concurrent_requests = 5
-    concurrent_requests_per_domain = 3
-    download_delay = 1.0
+    concurrent_requests = 2
+    concurrent_requests_per_domain = 1
+    download_delay = 2.0
     max_blocked_retries = 3
 
     # Restrict crawling to the target domain
@@ -73,7 +73,13 @@ class BaseGaokaoSpider(Spider):
         rotator = get_proxy_rotator()
         manager.add(
             "http",
-            FetcherSession(
+            AsyncStealthySession(
+                headless=True,
+                google_search=False,
+                block_webrtc=True,
+                hide_canvas=True,
+                extra_headers={"Referer": "https://gaokao.chsi.com.cn/"},
+                additional_args={"viewport": {"width": 1366, "height": 768}},
                 impersonate=cast(Any, IMPERSONATE_LIST),
                 proxy_rotator=rotator,
             ),
@@ -82,7 +88,12 @@ class BaseGaokaoSpider(Spider):
             "stealth",
             AsyncStealthySession(
                 headless=True,
+                google_search=False,
                 block_webrtc=True,
+                hide_canvas=True,
+                extra_headers={"Referer": "https://gaokao.chsi.com.cn/"},
+                additional_args={"viewport": {"width": 1366, "height": 768}},
+                impersonate=cast(Any, IMPERSONATE_LIST),
                 proxy_rotator=rotator,
             ),
             lazy=True,
