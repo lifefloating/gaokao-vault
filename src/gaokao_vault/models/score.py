@@ -10,6 +10,7 @@ class ScoreLineItem(BaseModel):
     batch: str
     score: int | None = None
     note: str | None = None
+    special_name: str | None = None
 
 
 class ScoreSegmentItem(BaseModel):

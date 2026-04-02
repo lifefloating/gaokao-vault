@@ -244,11 +244,12 @@ CREATE TABLE IF NOT EXISTS admission_score_lines (
     batch           VARCHAR(50) NOT NULL,
     score           INTEGER,
     note            VARCHAR(200),
+    special_name    VARCHAR(200),
     content_hash    VARCHAR(64),
     crawl_task_id   BIGINT REFERENCES crawl_tasks(id),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(province_id, year, subject_category_id, batch)
+    UNIQUE(province_id, year, subject_category_id, batch, special_name)
 );
 
 CREATE INDEX IF NOT EXISTS idx_score_lines_province_year ON admission_score_lines(province_id, year);

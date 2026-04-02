@@ -6,10 +6,11 @@ import asyncpg
 async def upsert_score_line(conn: asyncpg.Connection, data: dict) -> int:
     row = await conn.fetchrow(
         """
-        INSERT INTO admission_score_lines (province_id, year, subject_category_id, batch, score, note,
-            content_hash, crawl_task_id)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-        ON CONFLICT (province_id, year, subject_category_id, batch) DO UPDATE SET
+        INSERT INTO admission_score_lines
+            (province_id, year, subject_category_id, batch, score, note, special_name,
+             content_hash, crawl_task_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ON CONFLICT (province_id, year, subject_category_id, batch, special_name) DO UPDATE SET
             score=EXCLUDED.score, note=EXCLUDED.note,
             content_hash=EXCLUDED.content_hash, crawl_task_id=EXCLUDED.crawl_task_id
         RETURNING id
@@ -20,6 +21,7 @@ async def upsert_score_line(conn: asyncpg.Connection, data: dict) -> int:
         data["batch"],
         data.get("score"),
         data.get("note"),
+        data.get("special_name"),
         data.get("content_hash"),
         data.get("crawl_task_id"),
     )

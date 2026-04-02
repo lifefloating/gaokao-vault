@@ -51,19 +51,23 @@ class BaseGaokaoSpider(Spider):
         config: CrawlConfig | None = None,
         **kwargs,
     ):
+        # Set _rs_wait_ms BEFORE super().__init__() because it calls
+        # configure_sessions() which reads self._rs_wait_ms.
+        self._rs_wait_ms = 10000  # default RS wait
+        if config:
+            self._rs_wait_ms = config.rs_wait_ms
+
         super().__init__(**kwargs)
         self._db_config = db_config
         self._local_pool: asyncpg.Pool | None = None
         self.crawl_task_id = crawl_task_id
         self.mode = mode
         self._stats: dict[str, int] = {"new": 0, "updated": 0, "unchanged": 0, "failed": 0}
-        self._rs_wait_ms = 10000  # default RS wait
 
         if config:
             self.concurrent_requests = config.concurrency
             self.concurrent_requests_per_domain = config.concurrency_per_domain
             self.download_delay = config.base_delay
-            self._rs_wait_ms = config.rs_wait_ms
 
     async def _get_pool(self) -> asyncpg.Pool:
         """Lazily create a local asyncpg pool bound to the current event loop."""

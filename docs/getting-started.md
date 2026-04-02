@@ -14,6 +14,10 @@
 git clone https://github.com/lifefloating/gaokao-vault.git
 cd gaokao-vault
 
+# 配置环境变量（至少填入 OPENAI_API_KEY）
+cp .env.example .env
+# 编辑 .env，填入你的 OpenAI API Key
+
 # 启动 PostgreSQL
 docker compose up -d db
 
@@ -59,6 +63,8 @@ cp .env.example .env
 | `GAOKAO_PROXY__USE_FREEPROXY` | 是否启用免费代理 | `false` |
 | `GAOKAO_CRAWL__CONCURRENCY` | 并发请求数 | `5` |
 | `GAOKAO_CRAWL__BASE_DELAY` | 请求基础延迟(秒) | `1.0` |
+| `OPENAI_API_BASE` | OpenAI API 地址 | `https://api.openai.com/v1` |
+| `OPENAI_API_KEY` | OpenAI API 密钥 | （必填，用于分数线截图 AI 分析） |
 
 ### 初始化数据库
 
