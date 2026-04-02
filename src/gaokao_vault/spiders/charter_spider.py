@@ -81,7 +81,7 @@ class CharterSpider(BaseGaokaoSpider):
         # Resolve school_id from school name
         school_id = None
         if school_name:
-            async with self.db_pool.acquire() as conn:
+            async with (await self._get_pool()).acquire() as conn:
                 row = await conn.fetchrow("SELECT id FROM schools WHERE name = $1", school_name)
                 if row:
                     school_id = row["id"]

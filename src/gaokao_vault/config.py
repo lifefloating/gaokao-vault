@@ -16,7 +16,7 @@ class ProxyConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="GAOKAO_PROXY__")
 
     static_proxies: list[str] = Field(default_factory=list)
-    use_freeproxy: bool = False
+    use_freeproxy: bool = True
     refresh_interval_min: int = 30
 
 

@@ -85,7 +85,7 @@ class InterpretationSpider(BaseGaokaoSpider):
         # Resolve major_id from major name
         major_id = None
         if major_name:
-            async with self.db_pool.acquire() as conn:
+            async with (await self._get_pool()).acquire() as conn:
                 row = await conn.fetchrow("SELECT id FROM majors WHERE name = $1", major_name)
                 if row:
                     major_id = row["id"]

@@ -60,7 +60,7 @@ def crawl(
         config = AppConfig()
         pool = await create_pool()
         try:
-            orchestrator = Orchestrator(db_pool=pool, config=config.crawl, mode=mode)
+            orchestrator = Orchestrator(db_pool=pool, config=config.crawl, mode=mode, db_config=config.db)
             if types:
                 await orchestrator.run_types(types)
             else:
@@ -88,7 +88,7 @@ def run_spider(
         config = AppConfig()
         pool = await create_pool()
         try:
-            orchestrator = Orchestrator(db_pool=pool, config=config.crawl, mode=mode)
+            orchestrator = Orchestrator(db_pool=pool, config=config.crawl, mode=mode, db_config=config.db)
             stats = await orchestrator.run_single(spider_name)
             typer.echo(f"Spider {spider_name} finished: {stats}")
         finally:

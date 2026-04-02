@@ -5,7 +5,7 @@ import logging
 
 import asyncpg
 
-from gaokao_vault.config import CrawlConfig
+from gaokao_vault.config import CrawlConfig, DatabaseConfig
 from gaokao_vault.constants import PHASE2_TYPES, PHASE3_TYPES, TaskType
 from gaokao_vault.scheduler.task_manager import TaskManager
 from gaokao_vault.spiders.announcement_spider import AnnouncementSpider
@@ -55,10 +55,12 @@ class Orchestrator:
         db_pool: asyncpg.Pool,
         config: CrawlConfig | None = None,
         mode: str = "full",
+        db_config: DatabaseConfig | None = None,
     ):
-        self.db_pool = db_pool
+        self.db_pool = db_pool  # Keep for TaskManager (main-loop operations)
         self.config = config or CrawlConfig()
         self.mode = mode
+        self.db_config = db_config or DatabaseConfig()
         self.task_manager = TaskManager(db_pool)
 
     async def run_all(self) -> None:
@@ -86,7 +88,7 @@ class Orchestrator:
 
         try:
             spider = spider_cls(
-                db_pool=self.db_pool,
+                db_config=self.db_config,
                 crawl_task_id=task_id,
                 mode=self.mode,
                 config=self.config,
