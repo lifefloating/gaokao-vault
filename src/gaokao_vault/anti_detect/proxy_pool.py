@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from gaokao_vault.config import ProxyConfig
 
@@ -26,13 +26,19 @@ class ProxyPoolManager:
         if not self._use_freeproxy:
             return
         try:
-            from freeproxy import FreeProxy
+            from freeproxy.freeproxy import ProxiedSessionClient
 
-            proxy = FreeProxy(country_id=["CN"], timeout=5, rand=True)
+            client = ProxiedSessionClient(
+                init_proxied_session_cfg={
+                    "max_pages": 1,
+                    "filter_rule": {"country_code": ["CN"]},
+                },
+                disable_print=True,
+            )
             for _ in range(10):
                 try:
-                    p = proxy.get()
-                    if p and p not in self._free_proxies:
+                    p = client.getrandomproxy(proxy_format="str")
+                    if p and isinstance(p, str) and p not in self._free_proxies:
                         self._free_proxies.append(p)
                 except Exception:  # noqa: S112
                     continue
@@ -51,7 +57,7 @@ class ProxyPoolManager:
             idx = random.randint(0, len(proxies) - 1)  # noqa: S311
             return proxies[idx], idx
 
-        return ProxyRotator(all_proxies, strategy=random_strategy)
+        return ProxyRotator(cast(Any, all_proxies), strategy=random_strategy)
 
 
 def get_proxy_rotator(config: ProxyConfig | None = None) -> ProxyRotator | None:

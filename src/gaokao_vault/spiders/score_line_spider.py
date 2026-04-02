@@ -37,6 +37,8 @@ class ScoreLineSpider(BaseGaokaoSpider):
                 )
 
     async def parse(self, response: Response):
+        if response.request is None:
+            return
         province_id = response.request.meta.get("province_id")
         year = response.request.meta.get("year")
 

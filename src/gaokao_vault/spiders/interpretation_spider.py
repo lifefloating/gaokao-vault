@@ -27,6 +27,8 @@ class InterpretationSpider(BaseGaokaoSpider):
         yield Request(url, callback=self.parse, meta={"page": 1})
 
     async def parse(self, response: Response):
+        if response.request is None:
+            return
         current_page = response.request.meta.get("page", 1)
         items_found = False
 
@@ -38,7 +40,7 @@ class InterpretationSpider(BaseGaokaoSpider):
                 continue
 
             title = link.css("::text").get("").strip()
-            href = link.attrib.get("href", "")
+            href = link[0].attrib.get("href", "")
             author = item_el.css("span.author::text").get("").strip() or None
             date_text = item_el.css("span.date::text").get("").strip()
             major_name = item_el.css("span.major::text").get("").strip()
@@ -69,6 +71,8 @@ class InterpretationSpider(BaseGaokaoSpider):
             )
 
     async def parse_detail(self, response: Response):
+        if response.request is None:
+            return
         meta = response.request.meta
         major_name = meta.get("major_name", "")
 

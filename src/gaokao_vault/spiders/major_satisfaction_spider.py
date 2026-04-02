@@ -44,6 +44,8 @@ class MajorSatisfactionSpider(BaseGaokaoSpider):
             )
 
     async def parse(self, response: Response):
+        if response.request is None:
+            return
         major_id = response.request.meta.get("major_id")
         school_id = response.request.meta.get("school_id")
 

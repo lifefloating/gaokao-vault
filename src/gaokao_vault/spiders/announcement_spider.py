@@ -34,6 +34,8 @@ class AnnouncementSpider(BaseGaokaoSpider):
             )
 
     async def parse(self, response: Response):
+        if response.request is None:
+            return
         province_id = response.request.meta.get("province_id")
         current_page = response.request.meta.get("page", 1)
 
@@ -50,7 +52,7 @@ class AnnouncementSpider(BaseGaokaoSpider):
                 continue
 
             title = link.css("::text").get("").strip()
-            href = link.attrib.get("href", "")
+            href = link[0].attrib.get("href", "")
             date_text = item_el.css("span.date::text").get("").strip()
             ann_type = item_el.css("span.type::text").get("").strip() or None
 
@@ -103,6 +105,8 @@ class AnnouncementSpider(BaseGaokaoSpider):
 
     async def parse_detail(self, response: Response):
         """Parse announcement detail page for full content."""
+        if response.request is None:
+            return
         data = response.request.meta.get("item_data", {})
         province_id = data.get("province_id")
 

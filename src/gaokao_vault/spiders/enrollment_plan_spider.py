@@ -53,6 +53,8 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
                     )
 
     async def parse(self, response: Response):
+        if response.request is None:
+            return
         school_id = response.request.meta.get("school_id")
         province_id = response.request.meta.get("province_id")
         year = response.request.meta.get("year")

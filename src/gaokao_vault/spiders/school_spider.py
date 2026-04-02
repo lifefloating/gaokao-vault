@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import ClassVar
 
 from scrapling.spiders import Request, Response
 
@@ -28,6 +29,8 @@ class SchoolSpider(BaseGaokaoSpider):
         if response.status == 404:
             return
 
+        if response.request is None:
+            return
         sch_id = response.request.meta.get("sch_id", 0)
 
         name_el = response.css("h1.yxk-name::text")
@@ -42,28 +45,7 @@ class SchoolSpider(BaseGaokaoSpider):
         }
 
         # Extract basic info from detail table
-        for row in response.css("table.yxk-detail tr"):
-            label_el = row.css("th::text")
-            value_el = row.css("td::text")
-            if not label_el or not value_el:
-                continue
-            label = label_el.get("").strip()
-            value = value_el.get("").strip()
-            if not label or not value:
-                continue
-
-            field_map = {
-                "所在地": "city",
-                "隶属于": "authority",
-                "办学层次": "level",
-                "院校类型": "school_type",
-                "官方网址": "website",
-                "招办电话": "phone",
-                "电子邮箱": "email",
-                "通讯地址": "address",
-            }
-            if label in field_map:
-                data[field_map[label]] = value
+        self._extract_detail_fields(response, data)
 
         # Extract boolean tags
         tags_text = response.css(".yxk-tags span::text").getall()
@@ -94,3 +76,27 @@ class SchoolSpider(BaseGaokaoSpider):
                 unique_keys={"sch_id": sch_id},
                 upsert_fn=upsert_school,
             )
+
+    _FIELD_MAP: ClassVar[dict[str, str]] = {
+        "所在地": "city",
+        "隶属于": "authority",
+        "办学层次": "level",
+        "院校类型": "school_type",
+        "官方网址": "website",
+        "招办电话": "phone",
+        "电子邮箱": "email",
+        "通讯地址": "address",
+    }
+
+    def _extract_detail_fields(self, response: Response, data: dict) -> None:
+        for row in response.css("table.yxk-detail tr"):
+            label_el = row.css("th::text")
+            value_el = row.css("td::text")
+            if not label_el or not value_el:
+                continue
+            label = label_el.get("").strip()
+            value = value_el.get("").strip()
+            if not label or not value:
+                continue
+            if label in self._FIELD_MAP:
+                data[self._FIELD_MAP[label]] = value

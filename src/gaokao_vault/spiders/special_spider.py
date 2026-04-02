@@ -45,6 +45,8 @@ class SpecialSpider(BaseGaokaoSpider):
             )
 
     async def parse(self, response: Response):
+        if response.request is None:
+            return
         etype = response.request.meta.get("enrollment_type")
         current_page = response.request.meta.get("page", 1)
         items_found = False
@@ -57,7 +59,7 @@ class SpecialSpider(BaseGaokaoSpider):
                 continue
 
             title = link.css("::text").get("").strip()
-            href = link.attrib.get("href", "")
+            href = link[0].attrib.get("href", "")
             date_text = item_el.css("span.date::text").get("").strip()
             year_text = item_el.css("span.year::text").get("").strip()
 
@@ -110,6 +112,8 @@ class SpecialSpider(BaseGaokaoSpider):
             )
 
     async def parse_detail(self, response: Response):
+        if response.request is None:
+            return
         data = response.request.meta.get("item_data", {})
         content_el = response.css("div.article-content")
         if content_el:

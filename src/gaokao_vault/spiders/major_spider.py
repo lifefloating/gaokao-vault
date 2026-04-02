@@ -37,6 +37,8 @@ class MajorSpider(BaseGaokaoSpider):
 
     async def parse_categories(self, response: Response):
         """Phase 1: Parse category and subcategory lists, then follow to detail pages."""
+        if response.request is None:
+            return
         education_level = response.request.meta.get("education_level", "本科")
 
         for cat_el in response.css("div.category-group"):
@@ -89,6 +91,8 @@ class MajorSpider(BaseGaokaoSpider):
 
     async def parse_major_detail(self, response: Response):
         """Phase 2: Parse individual major detail page."""
+        if response.request is None:
+            return
         meta = response.request.meta
         education_level = meta.get("education_level", "本科")
         subcategory_id = meta.get("subcategory_id")

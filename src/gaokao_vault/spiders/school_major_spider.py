@@ -37,6 +37,8 @@ class SchoolMajorSpider(BaseGaokaoSpider):
         if response.status == 404:
             return
 
+        if response.request is None:
+            return
         school_id = response.request.meta.get("school_id")
 
         for link in response.css("div.major-list a.major-link"):

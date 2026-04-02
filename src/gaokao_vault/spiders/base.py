@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import asyncpg
 from scrapling.fetchers import AsyncStealthySession, FetcherSession
@@ -66,7 +66,7 @@ class BaseGaokaoSpider(Spider):
         manager.add(
             "http",
             FetcherSession(
-                impersonate=IMPERSONATE_LIST,
+                impersonate=cast(Any, IMPERSONATE_LIST),
                 proxy_rotator=rotator,
             ),
         )
