@@ -4,9 +4,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 WORKDIR /app
 
-# Build deps for asyncpg and quickjs (C extensions need headers)
+# quickjs has no aarch64 wheel — needs gcc to compile from source
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc libc-dev make \
+    gcc libc-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies first (layer cache)
