@@ -33,3 +33,18 @@ async def close_pool() -> None:
     if _pool is not None:
         await _pool.close()
         _pool = None
+
+
+async def create_local_pool(config: DatabaseConfig) -> asyncpg.Pool:
+    """Create a fresh asyncpg.Pool bound to the current event loop.
+
+    Unlike :func:`create_pool`, this is **not** a singleton - every call
+    returns a brand-new pool.  Use this when you need a pool on a loop
+    that differs from the one where the global pool was created (e.g.
+    inside scrapling's internal event loop).
+    """
+    return await asyncpg.create_pool(
+        dsn=config.dsn,
+        min_size=config.pool_min,
+        max_size=config.pool_max,
+    )

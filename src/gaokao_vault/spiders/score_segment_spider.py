@@ -34,8 +34,9 @@ class ScoreSegmentSpider(BaseGaokaoSpider):
         self._sink: BatchSink | None = None
 
     async def on_start(self, resuming: bool = False):
+        pool = await self._get_pool()
         self._sink = BatchSink(
-            pool=self.db_pool,
+            pool=pool,
             flush_fn=self._flush_batch,
             batch_size=500,
         )

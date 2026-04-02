@@ -55,7 +55,7 @@ class MajorSpider(BaseGaokaoSpider):
                 {"name": cat_name, "education_level": education_level, "code": cat_code},
             )
             if cat_data:
-                async with self.db_pool.acquire() as conn:
+                async with (await self._get_pool()).acquire() as conn:
                     cat_id = await upsert_major_category(conn, cat_data)
 
                 for sub_el in cat_el.css("div.subcategory"):
@@ -72,7 +72,7 @@ class MajorSpider(BaseGaokaoSpider):
                         {"category_id": cat_id, "name": sub_name, "code": sub_code},
                     )
                     if sub_data:
-                        async with self.db_pool.acquire() as conn:
+                        async with (await self._get_pool()).acquire() as conn:
                             sub_id = await upsert_major_subcategory(conn, sub_data)
 
                         for link in sub_el.css("a.major-link"):

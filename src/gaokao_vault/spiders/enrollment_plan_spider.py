@@ -28,7 +28,7 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
     download_delay = 2.0
 
     async def start_requests(self):
-        async with self.db_pool.acquire() as conn:
+        async with (await self._get_pool()).acquire() as conn:
             rows = await conn.fetch("SELECT id, sch_id FROM schools ORDER BY id")
 
         for row in rows:

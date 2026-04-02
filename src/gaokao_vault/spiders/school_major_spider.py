@@ -20,7 +20,7 @@ class SchoolMajorSpider(BaseGaokaoSpider):
     task_type: str = TaskType.SCHOOL_MAJORS
 
     async def start_requests(self):
-        async with self.db_pool.acquire() as conn:
+        async with (await self._get_pool()).acquire() as conn:
             rows = await conn.fetch("SELECT id, sch_id FROM schools ORDER BY id")
 
         for row in rows:
@@ -46,7 +46,7 @@ class SchoolMajorSpider(BaseGaokaoSpider):
             if not major_code:
                 continue
 
-            async with self.db_pool.acquire() as conn:
+            async with (await self._get_pool()).acquire() as conn:
                 row = await conn.fetchrow("SELECT id FROM majors WHERE code = $1", major_code)
 
             if not row:

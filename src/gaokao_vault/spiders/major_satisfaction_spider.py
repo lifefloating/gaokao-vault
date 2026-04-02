@@ -21,7 +21,7 @@ class MajorSatisfactionSpider(BaseGaokaoSpider):
     task_type: str = TaskType.MAJOR_SATISFACTION
 
     async def start_requests(self):
-        async with self.db_pool.acquire() as conn:
+        async with (await self._get_pool()).acquire() as conn:
             rows = await conn.fetch(
                 "SELECT m.id as major_id, s.id as school_id, s.sch_id "
                 "FROM majors m CROSS JOIN schools s ORDER BY m.id, s.id"

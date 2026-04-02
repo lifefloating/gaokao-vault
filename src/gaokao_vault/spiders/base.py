@@ -9,7 +9,8 @@ from scrapling.spiders import Request, Response, Spider
 
 from gaokao_vault.anti_detect.proxy_pool import get_proxy_rotator
 from gaokao_vault.anti_detect.ua_pool import IMPERSONATE_LIST
-from gaokao_vault.config import CrawlConfig
+from gaokao_vault.config import CrawlConfig, DatabaseConfig
+from gaokao_vault.db.connection import create_local_pool
 from gaokao_vault.pipeline.dedup import deduplicate_and_persist
 from gaokao_vault.pipeline.hasher import compute_content_hash
 
@@ -44,14 +45,15 @@ class BaseGaokaoSpider(Spider):
 
     def __init__(
         self,
-        db_pool: asyncpg.Pool,
+        db_config: DatabaseConfig,
         crawl_task_id: int,
         mode: str = "full",
         config: CrawlConfig | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.db_pool = db_pool
+        self._db_config = db_config
+        self._local_pool: asyncpg.Pool | None = None
         self.crawl_task_id = crawl_task_id
         self.mode = mode
         self._stats: dict[str, int] = {"new": 0, "updated": 0, "unchanged": 0, "failed": 0}
@@ -60,6 +62,12 @@ class BaseGaokaoSpider(Spider):
             self.concurrent_requests = config.concurrency
             self.concurrent_requests_per_domain = config.concurrency_per_domain
             self.download_delay = config.base_delay
+
+    async def _get_pool(self) -> asyncpg.Pool:
+        """Lazily create a local asyncpg pool bound to the current event loop."""
+        if self._local_pool is None:
+            self._local_pool = await create_local_pool(self._db_config)
+        return self._local_pool
 
     def configure_sessions(self, manager) -> None:
         rotator = get_proxy_rotator()
@@ -102,7 +110,7 @@ class BaseGaokaoSpider(Spider):
         content_hash = compute_content_hash(item)
         try:
             change_type = await deduplicate_and_persist(
-                db_pool=self.db_pool,
+                db_pool=await self._get_pool(),
                 entity_type=entity_type,
                 item=item,
                 content_hash=content_hash,
@@ -121,7 +129,7 @@ class BaseGaokaoSpider(Spider):
     async def on_close(self) -> None:
         from gaokao_vault.db.queries.crawl_meta import update_task_stats
 
-        await update_task_stats(self.db_pool, self.crawl_task_id, self._stats)
+        await update_task_stats(await self._get_pool(), self.crawl_task_id, self._stats)
         logger.info(
             "Spider %s finished: new=%d updated=%d unchanged=%d failed=%d",
             self.name,
@@ -130,6 +138,8 @@ class BaseGaokaoSpider(Spider):
             self._stats["unchanged"],
             self._stats["failed"],
         )
+        if self._local_pool is not None:
+            await self._local_pool.close()
 
     async def parse(self, response: Response):
         raise NotImplementedError
