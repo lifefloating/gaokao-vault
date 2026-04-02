@@ -54,7 +54,7 @@ class BaseGaokaoSpider(Spider):
         self.db_pool = db_pool
         self.crawl_task_id = crawl_task_id
         self.mode = mode
-        self.stats: dict[str, int] = {"new": 0, "updated": 0, "unchanged": 0, "failed": 0}
+        self._stats: dict[str, int] = {"new": 0, "updated": 0, "unchanged": 0, "failed": 0}
 
         if config:
             self.concurrent_requests = config.concurrency
@@ -112,23 +112,23 @@ class BaseGaokaoSpider(Spider):
             )
         except Exception:
             logger.exception("Failed to persist item for %s: keys=%s", entity_type, unique_keys)
-            self.stats["failed"] += 1
+            self._stats["failed"] += 1
             return "failed"
         else:
-            self.stats[change_type] += 1
+            self._stats[change_type] += 1
             return change_type
 
     async def on_close(self) -> None:
         from gaokao_vault.db.queries.crawl_meta import update_task_stats
 
-        await update_task_stats(self.db_pool, self.crawl_task_id, self.stats)
+        await update_task_stats(self.db_pool, self.crawl_task_id, self._stats)
         logger.info(
             "Spider %s finished: new=%d updated=%d unchanged=%d failed=%d",
             self.name,
-            self.stats["new"],
-            self.stats["updated"],
-            self.stats["unchanged"],
-            self.stats["failed"],
+            self._stats["new"],
+            self._stats["updated"],
+            self._stats["unchanged"],
+            self._stats["failed"],
         )
 
     async def parse(self, response: Response):

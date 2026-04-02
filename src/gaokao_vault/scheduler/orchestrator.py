@@ -97,7 +97,7 @@ class Orchestrator:
                 spider.start,
                 crawldir=self.config.crawl_dir,
             )
-            stats = spider.stats
+            stats = spider._stats
             logger.info(
                 "Spider %s completed=%s items_scraped=%d",
                 task_type,
