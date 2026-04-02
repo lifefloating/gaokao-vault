@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY --from=builder /app /app
+COPY --from=builder /root/.cache/ms-playwright /root/.cache/ms-playwright
 
 # Make the CLI available
 ENV PATH="/app/.venv/bin:$PATH"
