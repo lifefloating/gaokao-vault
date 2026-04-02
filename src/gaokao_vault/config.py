@@ -34,10 +34,18 @@ class CrawlConfig(BaseSettings):
     rs_wait_ms: int = 10000  # Wait time (ms) for RS anti-bot JS challenge
 
 
+class OpenAIConfig(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="OPENAI_")
+
+    api_base: str = "https://api.openai.com/v1"
+    api_key: str = ""
+
+
 class AppConfig(BaseSettings):
     db: DatabaseConfig = Field(default_factory=DatabaseConfig)
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     crawl: CrawlConfig = Field(default_factory=CrawlConfig)
+    openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
 
 
 def get_config() -> AppConfig:

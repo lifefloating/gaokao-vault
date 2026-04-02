@@ -18,6 +18,8 @@ CLI (Typer)
 |------|------|------|
 | 1 维度数据 | provinces, subject_categories, major_categories, major_subcategories | seed SQL（init-db 完成） |
 | 2 核心实体 | schools, majors, score_lines, timelines, announcements | 维度表 |
+
+score_lines 使用全页截图 + OpenAI Vision API 分析模式（详见 VisionAnalyzer）。
 | 3 关联+批量 | school_majors, score_segments, enrollment_plans, charters, special, *_satisfaction, interpretations | schools / majors |
 
 每阶段内的 Spider 并行执行，阶段间串行保证依赖。
@@ -27,7 +29,7 @@ CLI (Typer)
 ```
 src/gaokao_vault/
 ├── cli.py                  # Typer CLI 入口
-├── config.py               # Pydantic Settings 配置
+├── config.py               # Pydantic Settings 配置 (DB/Proxy/Crawl/OpenAI)
 ├── constants.py            # BASE_URL, TaskType 枚举
 ├── db/
 │   ├── connection.py       # asyncpg 连接池
@@ -44,6 +46,9 @@ src/gaokao_vault/
 │   ├── dedup.py            # new/updated/unchanged 去重
 │   ├── validator.py        # Pydantic 校验
 │   └── sink.py             # BatchSink 批量入库
+├── vision/
+│   ├── analyzer.py         # VisionAnalyzer (OpenAI Vision API)
+│   └── prompts/            # AI 提取指令模板
 ├── models/                 # Pydantic 数据模型
 ├── spiders/
 │   ├── base.py             # BaseGaokaoSpider 基类

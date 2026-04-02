@@ -34,6 +34,10 @@
 
 ::: gaokao_vault.spiders.base
 
+## Vision 分析
+
+::: gaokao_vault.vision.analyzer
+
 ## 调度器
 
 ::: gaokao_vault.scheduler.orchestrator

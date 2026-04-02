@@ -25,6 +25,7 @@ dependencies = [
     "pydantic-settings>=2.0",
     "pyfreeproxy>=0.4",
     "fake-useragent>=2.0",
+    "openai>=1.0",
 ]
 
 [project.scripts]
