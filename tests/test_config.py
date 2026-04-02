@@ -14,7 +14,7 @@ class TestConfig:
 
     def test_crawl_config_defaults(self):
         config = CrawlConfig()
-        assert config.concurrency == 5
+        assert config.concurrency == 2
         assert config.base_delay > 0
         assert 0 < config.jitter_ratio < 1
 
