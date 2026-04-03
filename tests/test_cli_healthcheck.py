@@ -18,7 +18,7 @@ runner = CliRunner()
 class TestHealthcheckCommandRegistered:
     def test_healthcheck_command_exists(self) -> None:
         command_names = list(app.registered_commands)
-        func_names = [cmd.callback.__name__ for cmd in command_names if cmd.callback]
+        func_names = [getattr(cmd.callback, "__name__", None) for cmd in command_names if cmd.callback]
         assert "healthcheck" in func_names
 
 
