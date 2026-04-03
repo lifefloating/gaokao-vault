@@ -133,5 +133,22 @@ def status(
     asyncio.run(_run())
 
 
+@app.command()
+def healthcheck() -> None:
+    """Check OpenAI API connectivity."""
+    from gaokao_vault.config import OpenAIConfig
+    from gaokao_vault.health import check_openai_health
+
+    config = OpenAIConfig()
+    result = asyncio.run(check_openai_health(config))
+
+    if result.ok:
+        typer.echo(result.message)
+        raise typer.Exit(code=0)
+    else:
+        typer.echo(result.message, err=True)
+        raise typer.Exit(code=1)
+
+
 if __name__ == "__main__":
     app()

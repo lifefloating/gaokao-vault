@@ -39,6 +39,8 @@ class OpenAIConfig(BaseSettings):
 
     api_base: str = "https://api.openai.com/v1"
     api_key: str = ""
+    health_model: str = "gpt-5.4"
+    vision_model: str = "gpt-5.4"
 
 
 class AppConfig(BaseSettings):

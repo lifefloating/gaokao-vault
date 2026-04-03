@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 
 from openai import AsyncOpenAI
+from openai.types.responses import EasyInputMessageParam, ResponseInputImageParam, ResponseInputTextParam
 
 from gaokao_vault.config import OpenAIConfig
 
@@ -19,10 +20,16 @@ _API_TIMEOUT = 60  # seconds
 
 
 class VisionAnalyzer:
-    """Extract structured score-line data from a screenshot via OpenAI Vision API."""
+    """Extract structured score-line data from a screenshot via OpenAI Responses API."""
 
     def __init__(self, config: OpenAIConfig) -> None:
-        self.client = AsyncOpenAI(base_url=config.api_base, api_key=config.api_key)
+        self._model = config.vision_model
+        self.client = AsyncOpenAI(
+            base_url=config.api_base,
+            api_key=config.api_key,
+            timeout=_API_TIMEOUT,
+            max_retries=0,
+        )
 
     async def analyze(
         self,
@@ -43,29 +50,26 @@ class VisionAnalyzer:
         prompt = self._build_prompt(province_name, year)
 
         try:
-            response = await self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{image_b64}",
-                                },
-                            },
-                        ],
-                    },
+            input_msg: EasyInputMessageParam = {
+                "role": "user",
+                "content": [
+                    ResponseInputTextParam(type="input_text", text=prompt),
+                    ResponseInputImageParam(
+                        type="input_image",
+                        detail="auto",
+                        image_url=f"data:image/png;base64,{image_b64}",
+                    ),
                 ],
-                timeout=_API_TIMEOUT,
+            }
+            response = await self.client.responses.create(
+                model=self._model,
+                input=[input_msg],
             )
         except Exception:
             logger.exception("Vision API call failed for %s %d", province_name, year)
             return []
 
-        content = (response.choices[0].message.content or "").strip()
+        content = (response.output_text or "").strip()
         return self._parse_response(content, province_name, year)
 
     # ------------------------------------------------------------------
