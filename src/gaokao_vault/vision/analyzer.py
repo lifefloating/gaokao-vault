@@ -29,7 +29,7 @@ class VisionAnalyzer:
     def __init__(self, config: OpenAIConfig, s3: S3Storage | None = None) -> None:
         self._model = config.vision_model
         self._s3 = s3
-        self.client = create_openai_client(config)
+        self.client = create_openai_client(config, timeout=180, max_retries=3)
 
     async def analyze(
         self,
