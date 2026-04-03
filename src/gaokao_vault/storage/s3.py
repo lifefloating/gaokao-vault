@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 from pathlib import Path
 
 import boto3
@@ -40,7 +41,8 @@ class S3Storage:
 
     def upload_image(self, image_path: Path, key: str) -> str:
         """Upload a local image file and return the object key."""
-        content_type = "image/png" if image_path.suffix.lower() == ".png" else "application/octet-stream"
+        guessed_type, _ = mimetypes.guess_type(image_path.name)
+        content_type = guessed_type or "application/octet-stream"
         self._client.upload_file(
             str(image_path),
             self._bucket,

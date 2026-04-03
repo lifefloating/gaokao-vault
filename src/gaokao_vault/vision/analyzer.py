@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -46,7 +47,7 @@ class VisionAnalyzer:
 
         Returns an empty list on any failure (timeout, non-JSON response, etc.).
         """
-        image_url = self._resolve_image_url(image_path, province_name, year)
+        image_url = await asyncio.to_thread(self._resolve_image_url, image_path, province_name, year)
         if image_url is None:
             return []
 
