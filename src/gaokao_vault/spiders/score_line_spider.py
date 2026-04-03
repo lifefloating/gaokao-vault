@@ -167,18 +167,29 @@ class ScoreLineSpider(BaseGaokaoSpider):
     # parse_detail  (Task 5.3)
     # ------------------------------------------------------------------
 
-    def _resolve_subject_category(self, category_text: str, province_name: str, year: int) -> int | None:
-        """Map a category text to its subject_category_id, or None if unknown."""
+    async def _auto_register_category(self, category_text: str) -> int:
+        """Auto-insert unknown category and return its id."""
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "INSERT INTO subject_categories (name, category_type) VALUES ($1, 'unknown') "
+                "ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                category_text,
+            )
+            cat_id = row["id"]
+            if self._subject_category_map is None:
+                self._subject_category_map = {}
+            self._subject_category_map[category_text] = cat_id
+            logger.info("Auto-registered new category '%s' with id=%d", category_text, cat_id)
+            return cat_id
+
+    async def _resolve_subject_category(self, category_text: str) -> int | None:
+        """Map a category text to its subject_category_id, auto-registering if unknown."""
         if not category_text:
             return None
         sc_id = (self._subject_category_map or {}).get(category_text)
         if sc_id is None:
-            logger.warning(
-                "Unknown category '%s' for %s %d, setting subject_category_id to null",
-                category_text,
-                province_name,
-                year,
-            )
+            sc_id = await self._auto_register_category(category_text)
         return sc_id
 
     def _build_s3(self) -> S3Storage | None:
@@ -240,12 +251,12 @@ class ScoreLineSpider(BaseGaokaoSpider):
             self._subject_category_map = await self._load_subject_category_map()
 
         for record in records:
-            subject_category_id = self._resolve_subject_category(record.get("category", ""), province_name, year)
+            subject_category_id = await self._resolve_subject_category(record.get("category", ""))
             data = {
                 "province_id": province_id,
                 "year": year,
                 "subject_category_id": subject_category_id,
-                "batch": record.get("batch", ""),
+                "batch": record.get("batch") or "",
                 "score": record.get("score"),
                 "note": record.get("note"),
                 "special_name": record.get("special_name"),
