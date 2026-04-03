@@ -64,6 +64,7 @@ class BaseGaokaoSpider(Spider):
         self.crawl_task_id = crawl_task_id
         self.mode = mode
         self._stats: dict[str, int] = {"new": 0, "updated": 0, "unchanged": 0, "failed": 0}
+        self._subject_category_map: dict[str, int] | None = None
 
         if config:
             self.concurrent_requests = config.concurrency
@@ -75,6 +76,44 @@ class BaseGaokaoSpider(Spider):
         if self._local_pool is None:
             self._local_pool = await create_local_pool(self._db_config)
         return self._local_pool
+
+    # ------------------------------------------------------------------
+    # Subject category resolution (shared by score spiders)
+    # ------------------------------------------------------------------
+
+    async def _load_subject_category_map(self) -> dict[str, int]:
+        """Query the subject_categories table and build a name → id mapping."""
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch("SELECT id, name FROM subject_categories")
+            return {row["name"]: row["id"] for row in rows}
+
+    async def _auto_register_category(self, category_text: str) -> int:
+        """Auto-insert unknown category and return its id."""
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "INSERT INTO subject_categories (name, category_type) VALUES ($1, 'unknown') "
+                "ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                category_text,
+            )
+            cat_id = row["id"]
+            if self._subject_category_map is None:
+                self._subject_category_map = {}
+            self._subject_category_map[category_text] = cat_id
+            logger.info("Auto-registered new category '%s' with id=%d", category_text, cat_id)
+            return cat_id
+
+    async def _resolve_subject_category(self, category_text: str) -> int | None:
+        """Map a category text to its subject_category_id, auto-registering if unknown."""
+        if not category_text:
+            return None
+        if self._subject_category_map is None:
+            self._subject_category_map = await self._load_subject_category_map()
+        sc_id = self._subject_category_map.get(category_text)
+        if sc_id is None:
+            sc_id = await self._auto_register_category(category_text)
+        return sc_id
 
     def configure_sessions(self, manager) -> None:
         rotator = get_proxy_rotator()

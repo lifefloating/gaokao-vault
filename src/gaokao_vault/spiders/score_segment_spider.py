@@ -77,8 +77,7 @@ class ScoreSegmentSpider(BaseGaokaoSpider):
                 continue
 
             subject_text = cells[3].css("::text").get("").strip() if len(cells) > 3 else ""
-            subject_map = {"理科": 1, "文科": 2, "综合": 3, "物理类": 4, "历史类": 5}
-            subject_category_id = subject_map.get(subject_text)
+            subject_category_id = await self._resolve_subject_category(subject_text)
 
             data = {
                 "province_id": province_id,
