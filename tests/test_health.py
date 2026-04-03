@@ -30,6 +30,7 @@ class _FakeStream:
     def __init__(self) -> None:
         self._event = MagicMock(type="response.created")
         self._yielded = False
+        self.closed = False
 
     def __aiter__(self):
         return self
@@ -39,6 +40,9 @@ class _FakeStream:
             raise StopAsyncIteration
         self._yielded = True
         return self._event
+
+    async def close(self):
+        self.closed = True
 
 
 _fake_request = MagicMock()
@@ -171,3 +175,14 @@ class TestCheckOpenaiHealthUnit:
                 max_output_tokens=1,
                 stream=True,
             )
+
+    def test_stream_closed_after_first_event(self) -> None:
+        config = OpenAIConfig(api_key="sk-test", api_base="https://api.openai.com/v1")
+        fake_stream = _FakeStream()
+        with patch("gaokao_vault.health.AsyncOpenAI") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.responses.create = AsyncMock(return_value=fake_stream)
+            mock_cls.return_value = mock_client
+            result = asyncio.run(check_openai_health(config))
+        assert result.ok is True
+        assert fake_stream.closed is True

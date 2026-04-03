@@ -54,8 +54,11 @@ async def check_openai_health(
             stream=True,
         )
         # Consume only the first event to confirm connectivity, then close.
-        async for _event in stream:
-            break
+        try:
+            async for _event in stream:
+                break
+        finally:
+            await stream.close()
         return HealthResult(ok=True, message="ok")
     except openai.AuthenticationError:
         return HealthResult(ok=False, message="Authentication failed: HTTP 401")
