@@ -89,7 +89,19 @@ gaokao-vault crawl --types schools majors score_lines
 
 # 单独调试
 gaokao-vault run-spider schools -v
+
+# 检查 OpenAI API 连通性
+gaokao-vault healthcheck
 ```
+
+### 健康检查
+
+`gaokao-vault healthcheck` 命令通过调用 OpenAI `/models` 端点（只读、零 token 消耗）来验证 API 配置是否正确：
+
+- 成功时输出 `ok` 到 stdout，退出码 0
+- 失败时输出错误信息到 stderr，退出码 1（如 key 未配置、认证失败、超时、连接失败等）
+
+Docker Compose 的 crawler 服务已集成该命令作为容器 healthcheck（每 30s 检查一次，3 次失败后标记为 unhealthy）。
 
 ## 方式三：DevContainer
 
