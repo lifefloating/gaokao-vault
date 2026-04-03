@@ -6,9 +6,8 @@ import asyncio
 from dataclasses import dataclass
 
 import openai
-from openai import AsyncOpenAI
 
-from gaokao_vault.config import OpenAIConfig
+from gaokao_vault.config import OpenAIConfig, create_openai_client
 
 
 @dataclass(frozen=True)
@@ -49,12 +48,7 @@ async def check_openai_health(
     if not config.api_key or not config.api_key.strip():
         return HealthResult(ok=False, message="OPENAI_API_KEY not configured")
 
-    client = AsyncOpenAI(
-        base_url=config.api_base,
-        api_key=config.api_key,
-        timeout=timeout,
-        max_retries=0,
-    )
+    client = create_openai_client(config, timeout=timeout, max_retries=0)
 
     try:
         stream = await client.responses.create(

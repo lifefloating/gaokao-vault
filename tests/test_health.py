@@ -23,6 +23,8 @@ valid_api_base_st = st.just("https://api.openai.com/v1") | st.from_regex(
     fullmatch=True,
 )
 
+_PATCH_TARGET = "gaokao_vault.health.create_openai_client"
+
 
 class _FakeStream:
     """Async-iterable mock that yields one event then stops."""
@@ -50,17 +52,15 @@ _fake_response = MagicMock()
 _fake_response.status_code = 500
 
 
-def _patch_responses_stream(mock_cls: MagicMock) -> MagicMock:
+def _make_mock_client_stream() -> AsyncMock:
     mock_client = AsyncMock()
     mock_client.responses.create = AsyncMock(return_value=_FakeStream())
-    mock_cls.return_value = mock_client
     return mock_client
 
 
-def _patch_responses_error(mock_cls: MagicMock, exc: Exception) -> MagicMock:
+def _make_mock_client_error(exc: Exception) -> AsyncMock:
     mock_client = AsyncMock()
     mock_client.responses.create = AsyncMock(side_effect=exc)
-    mock_cls.return_value = mock_client
     return mock_client
 
 
@@ -70,8 +70,7 @@ class TestSuccessResponseMapping:
     def test_success_always_returns_ok(self, api_key: str, api_base: str) -> None:
         config = OpenAIConfig(api_key=api_key, api_base=api_base)
 
-        with patch("gaokao_vault.health.AsyncOpenAI") as mock_cls:
-            _patch_responses_stream(mock_cls)
+        with patch(_PATCH_TARGET, return_value=_make_mock_client_stream()):
             result = asyncio.run(check_openai_health(config))
 
         assert result == HealthResult(ok=True, message="ok")
@@ -90,9 +89,9 @@ class TestEmptyApiKeyRejection:
     def test_empty_or_whitespace_key_is_rejected(self, api_key: str) -> None:
         config = OpenAIConfig(api_key=api_key, api_base="https://api.openai.com/v1")
 
-        with patch("gaokao_vault.health.AsyncOpenAI") as mock_cls:
+        with patch(_PATCH_TARGET) as mock_factory:
             result = asyncio.run(check_openai_health(config))
-            mock_cls.assert_not_called()
+            mock_factory.assert_not_called()
 
         assert result == HealthResult(ok=False, message="OPENAI_API_KEY not configured")
 
@@ -113,8 +112,7 @@ class TestApiExceptionMapping:
         config = OpenAIConfig(api_key=api_key, api_base=api_base)
         _error_kind, exc = error
 
-        with patch("gaokao_vault.health.AsyncOpenAI") as mock_cls:
-            _patch_responses_error(mock_cls, exc)
+        with patch(_PATCH_TARGET, return_value=_make_mock_client_error(exc)):
             result = asyncio.run(check_openai_health(config))
 
         assert result.ok is False
@@ -122,16 +120,9 @@ class TestApiExceptionMapping:
 
 
 class TestCheckOpenaiHealthUnit:
-    def _run_success(self) -> HealthResult:
-        config = OpenAIConfig(api_key="sk-test", api_base="https://api.openai.com/v1")
-        with patch("gaokao_vault.health.AsyncOpenAI") as mock_cls:
-            _patch_responses_stream(mock_cls)
-            return asyncio.run(check_openai_health(config))
-
     def _run_with_exception(self, exc: Exception) -> HealthResult:
         config = OpenAIConfig(api_key="sk-test", api_base="https://api.openai.com/v1")
-        with patch("gaokao_vault.health.AsyncOpenAI") as mock_cls:
-            _patch_responses_error(mock_cls, exc)
+        with patch(_PATCH_TARGET, return_value=_make_mock_client_error(exc)):
             return asyncio.run(check_openai_health(config))
 
     def test_auth_error_message(self) -> None:
@@ -154,20 +145,14 @@ class TestCheckOpenaiHealthUnit:
 
     def test_client_created_with_correct_params(self) -> None:
         config = OpenAIConfig(api_key="sk-test", api_base="https://api.openai.com/v1")
-        with patch("gaokao_vault.health.AsyncOpenAI") as mock_cls:
-            _patch_responses_stream(mock_cls)
+        with patch(_PATCH_TARGET, return_value=_make_mock_client_stream()) as mock_factory:
             asyncio.run(check_openai_health(config))
-            mock_cls.assert_called_once_with(
-                base_url="https://api.openai.com/v1",
-                api_key="sk-test",
-                timeout=10.0,
-                max_retries=0,
-            )
+            mock_factory.assert_called_once_with(config, timeout=10.0, max_retries=0)
 
     def test_calls_responses_create_with_correct_params(self) -> None:
         config = OpenAIConfig(api_key="sk-test", api_base="https://api.openai.com/v1")
-        with patch("gaokao_vault.health.AsyncOpenAI") as mock_cls:
-            mock_client = _patch_responses_stream(mock_cls)
+        mock_client = _make_mock_client_stream()
+        with patch(_PATCH_TARGET, return_value=mock_client):
             asyncio.run(check_openai_health(config))
             mock_client.responses.create.assert_called_once_with(
                 model="gpt-5.4",
@@ -179,10 +164,9 @@ class TestCheckOpenaiHealthUnit:
     def test_stream_closed_after_first_event(self) -> None:
         config = OpenAIConfig(api_key="sk-test", api_base="https://api.openai.com/v1")
         fake_stream = _FakeStream()
-        with patch("gaokao_vault.health.AsyncOpenAI") as mock_cls:
-            mock_client = AsyncMock()
-            mock_client.responses.create = AsyncMock(return_value=fake_stream)
-            mock_cls.return_value = mock_client
+        mock_client = AsyncMock()
+        mock_client.responses.create = AsyncMock(return_value=fake_stream)
+        with patch(_PATCH_TARGET, return_value=mock_client):
             result = asyncio.run(check_openai_health(config))
         assert result.ok is True
         assert fake_stream.closed is True

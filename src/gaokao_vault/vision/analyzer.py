@@ -9,10 +9,9 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from openai import AsyncOpenAI
 from openai.types.responses import EasyInputMessageParam, ResponseInputImageParam, ResponseInputTextParam
 
-from gaokao_vault.config import OpenAIConfig
+from gaokao_vault.config import OpenAIConfig, create_openai_client
 
 if TYPE_CHECKING:
     from gaokao_vault.storage.s3 import S3Storage
@@ -30,12 +29,7 @@ class VisionAnalyzer:
     def __init__(self, config: OpenAIConfig, s3: S3Storage | None = None) -> None:
         self._model = config.vision_model
         self._s3 = s3
-        self.client = AsyncOpenAI(
-            base_url=config.api_base,
-            api_key=config.api_key,
-            timeout=_API_TIMEOUT,
-            max_retries=0,
-        )
+        self.client = create_openai_client(config)
 
     async def analyze(
         self,

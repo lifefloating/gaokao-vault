@@ -64,3 +64,21 @@ class AppConfig(BaseSettings):
 
 def get_config() -> AppConfig:
     return AppConfig()
+
+
+def create_openai_client(config: OpenAIConfig, *, timeout: float = 60, max_retries: int = 0):
+    """Create an AsyncOpenAI client with a browser-like User-Agent.
+
+    Some third-party OpenAI-compatible proxies sit behind Cloudflare which
+    blocks the default ``AsyncOpenAI/Python`` User-Agent.  Using a generic
+    UA via ``default_headers`` avoids the 403 block.
+    """
+    from openai import AsyncOpenAI
+
+    return AsyncOpenAI(
+        base_url=config.api_base,
+        api_key=config.api_key,
+        timeout=timeout,
+        max_retries=max_retries,
+        default_headers={"User-Agent": "Mozilla/5.0"},
+    )
