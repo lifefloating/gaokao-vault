@@ -9,7 +9,7 @@ from scrapling.spiders import Request, Response, Spider
 
 from gaokao_vault.anti_detect.proxy_pool import get_proxy_rotator
 from gaokao_vault.anti_detect.ua_pool import IMPERSONATE_LIST
-from gaokao_vault.config import CrawlConfig, DatabaseConfig
+from gaokao_vault.config import AppConfig, CrawlConfig, DatabaseConfig
 from gaokao_vault.db.connection import create_local_pool
 from gaokao_vault.pipeline.dedup import deduplicate_and_persist
 from gaokao_vault.pipeline.hasher import compute_content_hash
@@ -49,6 +49,7 @@ class BaseGaokaoSpider(Spider):
         crawl_task_id: int,
         mode: str = "full",
         config: CrawlConfig | None = None,
+        app_config: AppConfig | None = None,
         **kwargs,
     ):
         # Set _rs_wait_ms BEFORE super().__init__() because it calls

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 import openai
@@ -16,6 +17,15 @@ class HealthResult:
 
     ok: bool
     message: str
+
+
+async def _consume_first_event(stream) -> None:
+    """Consume only the first SSE event, then close the stream."""
+    try:
+        async for _event in stream:
+            break
+    finally:
+        await stream.close()
 
 
 async def check_openai_health(
@@ -53,18 +63,13 @@ async def check_openai_health(
             max_output_tokens=1,
             stream=True,
         )
-        # Consume only the first event to confirm connectivity, then close.
-        try:
-            async for _event in stream:
-                break
-        finally:
-            await stream.close()
+        await asyncio.wait_for(_consume_first_event(stream), timeout=timeout)
         return HealthResult(ok=True, message="ok")
     except openai.AuthenticationError:
         return HealthResult(ok=False, message="Authentication failed: HTTP 401")
     except openai.PermissionDeniedError:
         return HealthResult(ok=False, message="Authentication failed: HTTP 403")
-    except openai.APITimeoutError:
+    except (openai.APITimeoutError, TimeoutError, asyncio.TimeoutError):
         return HealthResult(ok=False, message=f"Request timed out after {timeout}s")
     except openai.APIConnectionError as exc:
         return HealthResult(ok=False, message=f"Connection failed: {exc}")
