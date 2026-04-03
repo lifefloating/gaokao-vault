@@ -8,6 +8,10 @@
 - **仓库**: <https://github.com/lifefloating/gaokao-vault>
 - **文档**: <https://lifefloating.github.io/gaokao-vault/>
 
+## 数据预览
+
+![score_lines 批次分数线数据](docs/images/score_lines_preview.png)
+
 ## 功能概览
 
 - 13 类数据源全量覆盖（院校、专业、分数线、一分一段、招生计划、章程等）
