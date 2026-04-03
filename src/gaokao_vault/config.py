@@ -43,11 +43,23 @@ class OpenAIConfig(BaseSettings):
     vision_model: str = "gpt-5.4"
 
 
+class S3Config(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="S3_")
+
+    endpoint_url: str = "http://minio:9000"
+    public_url: str = "http://localhost:9000"
+    access_key: str = "minioadmin"
+    secret_key: str = "minioadmin"  # noqa: S105
+    bucket_name: str = "gaokao-screenshots"
+    presign_expires: int = 3600
+
+
 class AppConfig(BaseSettings):
     db: DatabaseConfig = Field(default_factory=DatabaseConfig)
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     crawl: CrawlConfig = Field(default_factory=CrawlConfig)
     openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
+    s3: S3Config = Field(default_factory=S3Config)
 
 
 def get_config() -> AppConfig:

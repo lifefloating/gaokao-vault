@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from openai import AsyncOpenAI
 from openai.types.responses import EasyInputMessageParam, ResponseInputImageParam, ResponseInputTextParam
 
 from gaokao_vault.config import OpenAIConfig
+
+if TYPE_CHECKING:
+    from gaokao_vault.storage.s3 import S3Storage
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +27,9 @@ _API_TIMEOUT = 60  # seconds
 class VisionAnalyzer:
     """Extract structured score-line data from a screenshot via OpenAI Responses API."""
 
-    def __init__(self, config: OpenAIConfig) -> None:
+    def __init__(self, config: OpenAIConfig, s3: S3Storage | None = None) -> None:
         self._model = config.vision_model
+        self._s3 = s3
         self.client = AsyncOpenAI(
             base_url=config.api_base,
             api_key=config.api_key,
@@ -41,10 +47,8 @@ class VisionAnalyzer:
 
         Returns an empty list on any failure (timeout, non-JSON response, etc.).
         """
-        try:
-            image_b64 = self._encode_image(image_path)
-        except Exception:
-            logger.exception("Failed to read image %s", image_path)
+        image_url = await asyncio.to_thread(self._resolve_image_url, image_path, province_name, year)
+        if image_url is None:
             return []
 
         prompt = self._build_prompt(province_name, year)
@@ -57,7 +61,7 @@ class VisionAnalyzer:
                     ResponseInputImageParam(
                         type="input_image",
                         detail="auto",
-                        image_url=f"data:image/png;base64,{image_b64}",
+                        image_url=image_url,
                     ),
                 ],
             }
@@ -71,6 +75,27 @@ class VisionAnalyzer:
 
         content = (response.output_text or "").strip()
         return self._parse_response(content, province_name, year)
+
+    def _resolve_image_url(self, image_path: Path, province_name: str, year: int) -> str | None:
+        """Upload to S3 and return presigned URL, or fall back to base64 data URL."""
+        if self._s3:
+            try:
+                key = f"screenshots/{province_name}/{year}/{image_path.name}"
+                self._s3.upload_image(image_path, key)
+                url = self._s3.presigned_url(key)
+                logger.debug("Using S3 presigned URL for %s", image_path.name)
+            except Exception:
+                logger.exception("S3 upload failed for %s, falling back to base64", image_path)
+            else:
+                return url
+
+        try:
+            image_b64 = self._encode_image(image_path)
+        except Exception:
+            logger.exception("Failed to read image %s", image_path)
+            return None
+        else:
+            return f"data:image/png;base64,{image_b64}"
 
     # ------------------------------------------------------------------
     # Internal helpers
