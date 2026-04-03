@@ -14,6 +14,7 @@ from gaokao_vault.db.queries.scores import upsert_score_line
 from gaokao_vault.models.score import ScoreLineItem
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
+from gaokao_vault.storage.s3 import S3Storage
 from gaokao_vault.vision.analyzer import VisionAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -180,6 +181,19 @@ class ScoreLineSpider(BaseGaokaoSpider):
             )
         return sc_id
 
+    def _build_s3(self) -> S3Storage | None:
+        """Create an S3Storage instance from app config, or None if unavailable."""
+        if self._app_config is None:
+            return None
+        try:
+            s3 = S3Storage(self._app_config.s3)
+            s3.ensure_bucket()
+        except Exception:
+            logger.warning("S3 storage unavailable, falling back to base64", exc_info=True)
+            return None
+        else:
+            return s3
+
     async def _analyze_screenshot(self, screenshot_path: Path, province_name: str, year: int) -> list[dict]:
         """Run VisionAnalyzer on a screenshot, returning parsed records."""
         openai_config = self._app_config.openai if self._app_config else None
@@ -187,7 +201,8 @@ class ScoreLineSpider(BaseGaokaoSpider):
             logger.error("No OpenAI config available, cannot analyze screenshot for %s %d", province_name, year)
             return []
 
-        analyzer = VisionAnalyzer(openai_config)
+        s3 = self._build_s3()
+        analyzer = VisionAnalyzer(openai_config, s3=s3)
         records = await analyzer.analyze(screenshot_path, province_name, year)
         if not records:
             logger.warning("No records extracted from screenshot for %s %d", province_name, year)
