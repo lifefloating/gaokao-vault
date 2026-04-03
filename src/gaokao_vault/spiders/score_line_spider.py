@@ -53,20 +53,12 @@ class ScoreLineSpider(BaseGaokaoSpider):
         super().__init__(db_config=db_config, crawl_task_id=crawl_task_id, mode=mode, config=config, **kwargs)
         self._app_config = app_config
         self._province_map: dict[str, int] | None = None
-        self._subject_category_map: dict[str, int] | None = None
 
     async def _load_province_map(self) -> dict[str, int]:
         """Query the provinces table and build a name → id mapping."""
         pool = await self._get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT id, name FROM provinces")
-            return {row["name"]: row["id"] for row in rows}
-
-    async def _load_subject_category_map(self) -> dict[str, int]:
-        """Query the subject_categories table and build a name → id mapping."""
-        pool = await self._get_pool()
-        async with pool.acquire() as conn:
-            rows = await conn.fetch("SELECT id, name FROM subject_categories")
             return {row["name"]: row["id"] for row in rows}
 
     # ------------------------------------------------------------------
@@ -167,31 +159,6 @@ class ScoreLineSpider(BaseGaokaoSpider):
     # parse_detail  (Task 5.3)
     # ------------------------------------------------------------------
 
-    async def _auto_register_category(self, category_text: str) -> int:
-        """Auto-insert unknown category and return its id."""
-        pool = await self._get_pool()
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "INSERT INTO subject_categories (name, category_type) VALUES ($1, 'unknown') "
-                "ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id",
-                category_text,
-            )
-            cat_id = row["id"]
-            if self._subject_category_map is None:
-                self._subject_category_map = {}
-            self._subject_category_map[category_text] = cat_id
-            logger.info("Auto-registered new category '%s' with id=%d", category_text, cat_id)
-            return cat_id
-
-    async def _resolve_subject_category(self, category_text: str) -> int | None:
-        """Map a category text to its subject_category_id, auto-registering if unknown."""
-        if not category_text:
-            return None
-        sc_id = (self._subject_category_map or {}).get(category_text)
-        if sc_id is None:
-            sc_id = await self._auto_register_category(category_text)
-        return sc_id
-
     def _build_s3(self) -> S3Storage | None:
         """Create an S3Storage instance from app config, or None if unavailable."""
         if self._app_config is None:
@@ -245,10 +212,6 @@ class ScoreLineSpider(BaseGaokaoSpider):
             return
 
         records = await self._analyze_screenshot(screenshot_path, province_name, year)
-
-        # Load subject_category mapping (cached)
-        if self._subject_category_map is None:
-            self._subject_category_map = await self._load_subject_category_map()
 
         for record in records:
             subject_category_id = await self._resolve_subject_category(record.get("category", ""))
