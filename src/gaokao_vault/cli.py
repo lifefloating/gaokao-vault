@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+from logging.handlers import RotatingFileHandler
 from typing import Annotated
 
 import typer
@@ -9,14 +11,34 @@ import typer
 app = typer.Typer(name="gaokao-vault", help="阳光高考全量数据抓取系统")
 logger = logging.getLogger(__name__)
 
+_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+_LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
-def _setup_logging(verbose: bool = False) -> None:
+
+def _setup_logging(verbose: bool = False, log_dir: str | None = None) -> None:
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    formatter = logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATEFMT)
+
+    root = logging.getLogger()
+    root.setLevel(level)
+    root.handlers.clear()
+
+    # stdout handler
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    root.addHandler(stream_handler)
+
+    # file handler
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            os.path.join(log_dir, "crawl.log"),
+            maxBytes=50 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(formatter)
+        root.addHandler(file_handler)
 
 
 @app.command()
@@ -50,7 +72,11 @@ def crawl(
     if mode not in ("full", "incremental"):
         typer.echo(f"Invalid mode '{mode}'. Must be 'full' or 'incremental'.", err=True)
         raise typer.Exit(code=1)
-    _setup_logging(verbose)
+
+    from gaokao_vault.config import CrawlConfig
+
+    crawl_cfg = CrawlConfig()
+    _setup_logging(verbose, log_dir=crawl_cfg.log_dir)
 
     async def _run():
         from gaokao_vault.config import AppConfig
@@ -80,7 +106,10 @@ def run_spider(
     verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
 ) -> None:
     """Run a single spider by task type name."""
-    _setup_logging(verbose)
+    from gaokao_vault.config import CrawlConfig
+
+    crawl_cfg = CrawlConfig()
+    _setup_logging(verbose, log_dir=crawl_cfg.log_dir)
 
     async def _run():
         from gaokao_vault.config import AppConfig

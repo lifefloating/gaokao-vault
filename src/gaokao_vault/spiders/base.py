@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, ClassVar, cast
 
 import asyncpg
@@ -65,6 +66,9 @@ class BaseGaokaoSpider(Spider):
         self.mode = mode
         self._stats: dict[str, int] = {"new": 0, "updated": 0, "unchanged": 0, "failed": 0}
         self._subject_category_map: dict[str, int] | None = None
+        self._last_heartbeat: float = time.monotonic()
+        self._heartbeat_interval: int = config.heartbeat_interval if config else 120
+        self._items_since_heartbeat: int = 0
 
         if config:
             self.concurrent_requests = config.concurrency
@@ -167,6 +171,23 @@ class BaseGaokaoSpider(Spider):
         """Log request-level errors for debugging."""
         logger.error("Request failed: %s — %s: %s", request.url, type(error).__name__, error)
 
+    def _maybe_heartbeat(self) -> None:
+        self._items_since_heartbeat += 1
+        now = time.monotonic()
+        if now - self._last_heartbeat >= self._heartbeat_interval:
+            logger.info(
+                "HEARTBEAT %s: %d items in last %.0fs (total: new=%d updated=%d unchanged=%d failed=%d)",
+                self.name,
+                self._items_since_heartbeat,
+                now - self._last_heartbeat,
+                self._stats["new"],
+                self._stats["updated"],
+                self._stats["unchanged"],
+                self._stats["failed"],
+            )
+            self._last_heartbeat = now
+            self._items_since_heartbeat = 0
+
     async def process_item(self, item: dict[str, Any], entity_type: str, unique_keys: dict, upsert_fn=None) -> str:
         content_hash = compute_content_hash(item)
         try:
@@ -182,9 +203,11 @@ class BaseGaokaoSpider(Spider):
         except Exception:
             logger.exception("Failed to persist item for %s: keys=%s", entity_type, unique_keys)
             self._stats["failed"] += 1
+            self._maybe_heartbeat()
             return "failed"
         else:
             self._stats[change_type] += 1
+            self._maybe_heartbeat()
             return change_type
 
     async def on_close(self) -> None:

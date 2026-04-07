@@ -50,3 +50,4 @@ make docs                        # 本地文档服务
 - Spider 新增需继承 `BaseGaokaoSpider`，设置 `name`、`task_type`、`start_urls`
 - 数据库 Schema 定义在 `src/gaokao_vault/db/schema.sql`
 - Docker Compose 支持一键启动（`docker compose up -d db`）
+- 日志持久化到 `crawl_data/logs/crawl.log`（RotatingFileHandler，50MB，保留 5 个备份），可通过 `GAOKAO_CRAWL__LOG_DIR` 环境变量修改路径
