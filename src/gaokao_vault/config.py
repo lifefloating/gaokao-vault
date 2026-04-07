@@ -32,6 +32,10 @@ class CrawlConfig(BaseSettings):
     crawl_dir: str = "./crawl_data"
     year_start: int = 2015
     rs_wait_ms: int = 10000  # Wait time (ms) for RS anti-bot JS challenge
+    log_dir: str = "./crawl_data/logs"
+    spider_timeout: int = 3600  # Per-spider timeout in seconds (1 hour)
+    phase_timeout: int = 14400  # Per-phase timeout in seconds (4 hours)
+    heartbeat_interval: int = 120  # Heartbeat log interval in seconds
 
 
 class OpenAIConfig(BaseSettings):

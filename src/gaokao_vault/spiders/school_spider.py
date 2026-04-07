@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from scrapling.spiders import Request, Response
 
@@ -30,7 +30,7 @@ class SchoolSpider(BaseGaokaoSpider):
         yield Request(warmup_url, callback=self.parse_warmup)
 
         for sch_id in range(1, MAX_SCH_ID + 1):
-            url = f"{BASE_URL}/sch/schoolInfo--schId-{sch_id}.dhtml"
+            url = f"{BASE_URL}/sch/schoolInfoMain--schId-{sch_id}.dhtml"
             yield Request(url, callback=self.parse, meta={"sch_id": sch_id})
 
     async def parse_warmup(self, response):
@@ -47,39 +47,16 @@ class SchoolSpider(BaseGaokaoSpider):
             return
         sch_id = response.request.meta.get("sch_id", 0)
 
-        name_el = response.css("h1.yxk-name::text")
-        name = name_el.get("").strip() if name_el else ""
+        name = self._extract_school_name(response)
         if not name:
             logger.debug("No school name found for schId=%d", sch_id)
             return
 
-        data = {
-            "sch_id": sch_id,
-            "name": name,
-        }
+        data: dict[str, Any] = {"sch_id": sch_id, "name": name}
 
-        # Extract basic info from detail table
         self._extract_detail_fields(response, data)
-
-        # Extract boolean tags
-        tags_text = response.css(".yxk-tags span::text").getall()
-        tag_set = {t.strip() for t in tags_text}
-        data["is_211"] = "211" in tag_set
-        data["is_985"] = "985" in tag_set
-        data["is_double_first"] = "双一流" in tag_set
-        data["is_private"] = "民办" in tag_set
-        data["is_independent"] = "独立学院" in tag_set
-        data["is_sino_foreign"] = "中外合作办学" in tag_set
-
-        # Extract logo
-        logo_el = response.css("img.yxk-logo::attr(src)")
-        if logo_el:
-            data["logo_url"] = logo_el.get("")
-
-        # Extract introduction
-        intro_el = response.css("div.yxk-intro")
-        if intro_el:
-            data["introduction"] = intro_el.get("").strip()[:5000]
+        self._extract_tags(response, data)
+        self._extract_logo_and_intro(response, data)
 
         item = validate_item(SchoolItem, data)
         if item:
@@ -91,26 +68,81 @@ class SchoolSpider(BaseGaokaoSpider):
                 upsert_fn=upsert_school,
             )
 
-    _FIELD_MAP: ClassVar[dict[str, str]] = {
-        "所在地": "city",
+    @staticmethod
+    def _extract_school_name(response: Response) -> str:
+        name_el = response.css("div.content-header")
+        if not name_el:
+            return ""
+        for t in name_el.css("::text").getall():
+            t = t.strip()
+            if t and "关注" not in t and not t.isdigit():
+                return t
+        return ""
+
+    @staticmethod
+    def _extract_tags(response: Response, data: dict) -> None:
+        tags_text = response.css("div.content-introduction span::text").getall()
+        tag_set = {t.strip() for t in tags_text}
+        data["is_211"] = "211" in tag_set
+        data["is_985"] = "985" in tag_set
+        data["is_double_first"] = any("双一流" in t for t in tag_set)
+        data["is_private"] = "民办" in tag_set
+        data["is_independent"] = "独立学院" in tag_set
+        data["is_sino_foreign"] = "中外合作办学" in tag_set
+
+    @staticmethod
+    def _extract_logo_and_intro(response: Response, data: dict) -> None:
+        logo_el = response.css("div.yxxx-header-img img::attr(src)")
+        if logo_el:
+            data["logo_url"] = logo_el.get("")
+
+        intro_el = response.css("div.content-introduction")
+        if intro_el:
+            intro_text = intro_el.css("::text").getall()
+            full_intro = " ".join(t.strip() for t in intro_text if t.strip())
+            if full_intro:
+                data["introduction"] = full_intro[:5000]
+
+    _SPAN_FIELD_MAP: ClassVar[dict[str, str]] = {
+        "yxszd": "city",
+        "txdz": "address",
+        "gfdh": "phone",
+    }
+
+    _LINK_FIELD_MAP: ClassVar[dict[str, str]] = {
+        "gfwz": "website",
+        "zswz": "recruit_website",
+    }
+
+    _TEXT_FIELD_MAP: ClassVar[dict[str, str]] = {
+        "教育行政主管部门": "authority",
         "隶属于": "authority",
-        "办学层次": "level",
+        "院校特性": "school_type",
         "院校类型": "school_type",
-        "官方网址": "website",
-        "招办电话": "phone",
-        "电子邮箱": "email",
-        "通讯地址": "address",
     }
 
     def _extract_detail_fields(self, response: Response, data: dict) -> None:
-        for row in response.css("table.yxk-detail tr"):
-            label_el = row.css("th::text")
-            value_el = row.css("td::text")
-            if not label_el or not value_el:
-                continue
-            label = label_el.get("").strip()
-            value = value_el.get("").strip()
-            if not label or not value:
-                continue
-            if label in self._FIELD_MAP:
-                data[self._FIELD_MAP[label]] = value
+        """Extract fields from div.content-info-item using span classes and text labels."""
+        for css_cls, field in self._SPAN_FIELD_MAP.items():
+            el = response.css(f"span.{css_cls}::text")
+            if el:
+                data[field] = el.get("").strip()
+
+        for css_cls, field in self._LINK_FIELD_MAP.items():
+            el = response.css(f"a.{css_cls}::attr(href)")
+            if el:
+                data[field] = el.get("").strip()
+
+        for info_item in response.css("div.content-info-item"):
+            full_text = " ".join(t.strip() for t in info_item.css("::text").getall())
+            for label, field in self._TEXT_FIELD_MAP.items():
+                if label in full_text:
+                    self._extract_labeled_span(info_item, label, field, data)
+
+    @staticmethod
+    def _extract_labeled_span(info_item, label: str, field: str, data: dict) -> None:
+        for s in info_item.css("span::text").getall():
+            s = s.strip()
+            if s and s != label:
+                data[field] = s
+                return

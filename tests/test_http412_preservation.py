@@ -298,20 +298,31 @@ class TestParse404SkipPreservation:
 _VALID_SCHOOL_HTML = """
 <html>
 <body>
-<h1 class="yxk-name">北京大学</h1>
-<div class="yxk-tags">
-    <span>985</span>
-    <span>211</span>
-    <span>双一流</span>
+<div class="yxxx-header-wrapper">
+  <div class="yxxx-header">
+    <div class="yxxx-header-img"><img src="https://example.com/logo.png" /></div>
+    <div class="yxxx-header-content">
+      <div class="content-header">北京大学 <span>28191人关注</span></div>
+      <div class="content-introduction">
+        <span>教育部</span>
+        <span>"双一流"建设高校</span>
+      </div>
+      <div class="content-info">
+        <div class="content-info-item">
+          所在地: <span class="yxszd">北京</span>
+          详细地址: <span class="txdz" title="北京市海淀区颐和园路5号">北京市海淀区颐和园路5号</span>
+        </div>
+        <div class="content-info-item">
+          官方网址: <a class="gfwz" href="https://www.pku.edu.cn">https://www.pku.edu.cn</a>
+          招生网址: <a class="zswz" href="https://www.gotopku.cn/">https://www.gotopku.cn/</a>
+        </div>
+        <div class="content-info-item">
+          官方电话: <span class="gfdh" title="010-62751407">010-62751407</span>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
-<table class="yxk-detail">
-    <tr><th>所在地</th><td>北京</td></tr>
-    <tr><th>隶属于</th><td>教育部</td></tr>
-    <tr><th>办学层次</th><td>本科</td></tr>
-    <tr><th>院校类型</th><td>综合</td></tr>
-</table>
-<img class="yxk-logo" src="https://example.com/logo.png" />
-<div class="yxk-intro">北京大学简介</div>
 </body>
 </html>
 """
@@ -365,15 +376,13 @@ class TestParse200ExtractionPreservation:
         assert item["sch_id"] == 40
 
         # Verify tags
-        assert item["is_985"] is True, "is_985 should be True"
-        assert item["is_211"] is True, "is_211 should be True"
         assert item["is_double_first"] is True, "is_double_first should be True"
 
         # Verify detail fields
         assert item["city"] == "北京", f"city is '{item.get('city')}', expected '北京'"
-        assert item["authority"] == "教育部", f"authority is '{item.get('authority')}', expected '教育部'"
-        assert item["level"] == "本科", f"level is '{item.get('level')}', expected '本科'"
-        assert item["school_type"] == "综合", f"school_type is '{item.get('school_type')}', expected '综合'"
+        assert item["address"] == "北京市海淀区颐和园路5号"
+        assert item["website"] == "https://www.pku.edu.cn"
+        assert item["phone"] == "010-62751407"
 
 
 # ---------------------------------------------------------------------------

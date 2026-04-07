@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 
 from scrapling.spiders import Request, Response
@@ -16,136 +17,186 @@ from gaokao_vault.spiders.base import BaseGaokaoSpider
 
 logger = logging.getLogger(__name__)
 
-EDUCATION_LEVELS = ["本科", "专科"]
+# Education level code → label mapping
+# ccCategory API returns keys like "1050" (本科普通教育), "1051" (本科职业教育), "1060" (专科)
+CC_LEVELS = {
+    "本科": "1050",
+    "专科": "1060",
+}
+
+_ZYK_API = f"{BASE_URL}/zyk/zybk"
 
 
 class MajorSpider(BaseGaokaoSpider):
-    """Two-phase spider: category list -> major details."""
+    """Crawl majors via the Vue SPA JSON API endpoints.
+
+    API chain: ccCategory → mlCategory → xkCategory → specialityesByCategory
+    All endpoints return ``{"msg": [...], "flag": true}`` JSON.
+    """
 
     name: str = "major_spider"
     task_type: str = TaskType.MAJORS
 
     async def start_requests(self):
-        for level in EDUCATION_LEVELS:
-            url = f"{BASE_URL}/zyk/zybk/?eduLevel={level}"
+        # Warmup: visit the SPA page to establish cookies/session
+        yield Request(
+            f"{_ZYK_API}/",
+            callback=self.parse_warmup,
+            sid="stealth",
+        )
+
+    async def parse_warmup(self, response: Response):
+        """After warmup, request mlCategory for each education level."""
+        logger.info("Major spider warmup completed: status=%s", response.status)
+        for level_label, cc_key in CC_LEVELS.items():
+            url = f"{_ZYK_API}/mlCategory/{cc_key}"
             yield Request(
                 url,
-                callback=self.parse_categories,
-                meta={"education_level": level},
+                callback=self.parse_ml_categories,
+                sid="stealth",
+                meta={"education_level": level_label, "cc_key": cc_key},
             )
 
-    async def parse_categories(self, response: Response):
-        """Phase 1: Parse category and subcategory lists, then follow to detail pages."""
+    async def parse_ml_categories(self, response: Response):
+        """Parse door-category (门类) list and request xkCategory for each."""
         if response.request is None:
             return
-        education_level = response.request.meta.get("education_level", "本科")
+        meta = response.request.meta
+        education_level = meta.get("education_level", "本科")
 
-        for cat_el in response.css("div.category-group"):
-            cat_name_el = cat_el.css("h3::text")
-            cat_code_el = cat_el.css("h3 span.code::text")
-            cat_name = cat_name_el.get("").strip() if cat_name_el else ""
-            cat_code = cat_code_el.get("").strip() if cat_code_el else None
+        items = _parse_api_response(response)
+        if items is None:
+            logger.warning("Failed to parse mlCategory response for %s", education_level)
+            return
 
-            if not cat_name:
+        for ml in items:
+            ml_key = ml.get("key", "")
+            ml_name = ml.get("name", "")
+            if not ml_key or not ml_name:
                 continue
 
+            # Persist the major category (门类)
             cat_data = validate_item(
                 MajorCategoryItem,
-                {"name": cat_name, "education_level": education_level, "code": cat_code},
+                {"name": ml_name, "education_level": education_level, "code": ml_key},
             )
+            cat_id = None
             if cat_data:
                 async with (await self._get_pool()).acquire() as conn:
                     cat_id = await upsert_major_category(conn, cat_data)
+                    self._stats["new"] += 1
+                    self._maybe_heartbeat()
 
-                for sub_el in cat_el.css("div.subcategory"):
-                    sub_name_el = sub_el.css("h4::text")
-                    sub_code_el = sub_el.css("h4 span.code::text")
-                    sub_name = sub_name_el.get("").strip() if sub_name_el else ""
-                    sub_code = sub_code_el.get("").strip() if sub_code_el else None
+            # Request subcategories (专业类)
+            url = f"{_ZYK_API}/xkCategory/{ml_key}"
+            yield Request(
+                url,
+                callback=self.parse_xk_categories,
+                sid="stealth",
+                meta={
+                    "education_level": education_level,
+                    "category_id": cat_id,
+                    "ml_name": ml_name,
+                },
+            )
 
-                    if not sub_name:
-                        continue
+    async def parse_xk_categories(self, response: Response):
+        """Parse subcategory (专业类) list and request specialities for each."""
+        if response.request is None:
+            return
+        meta = response.request.meta
+        education_level = meta.get("education_level", "本科")
+        category_id = meta.get("category_id")
 
-                    sub_data = validate_item(
-                        MajorSubcategoryItem,
-                        {"category_id": cat_id, "name": sub_name, "code": sub_code},
-                    )
-                    if sub_data:
-                        async with (await self._get_pool()).acquire() as conn:
-                            sub_id = await upsert_major_subcategory(conn, sub_data)
+        items = _parse_api_response(response)
+        if items is None:
+            logger.warning("Failed to parse xkCategory response")
+            return
 
-                        for link in sub_el.css("a.major-link"):
-                            href = link.attrib.get("href", "")
-                            major_name = link.css("::text").get("").strip()
-                            if href:
-                                yield Request(
-                                    response.urljoin(href),
-                                    callback=self.parse_major_detail,
-                                    meta={
-                                        "education_level": education_level,
-                                        "subcategory_id": sub_id,
-                                        "major_name": major_name,
-                                    },
-                                )
+        for xk in items:
+            xk_key = xk.get("key", "")
+            xk_name = xk.get("name", "")
+            if not xk_key or not xk_name:
+                continue
 
-    async def parse_major_detail(self, response: Response):
-        """Phase 2: Parse individual major detail page."""
+            # Persist the subcategory (专业类)
+            sub_data = validate_item(
+                MajorSubcategoryItem,
+                {"category_id": category_id, "name": xk_name, "code": xk_key},
+            )
+            sub_id = None
+            if sub_data:
+                async with (await self._get_pool()).acquire() as conn:
+                    sub_id = await upsert_major_subcategory(conn, sub_data)
+                    self._stats["new"] += 1
+                    self._maybe_heartbeat()
+
+            # Request individual majors (专业列表)
+            url = f"{_ZYK_API}/specialityesByCategory/{xk_key}"
+            yield Request(
+                url,
+                callback=self.parse_specialities,
+                sid="stealth",
+                meta={
+                    "education_level": education_level,
+                    "subcategory_id": sub_id,
+                },
+            )
+
+    async def parse_specialities(self, response: Response):
+        """Parse speciality (专业) list from JSON API."""
         if response.request is None:
             return
         meta = response.request.meta
         education_level = meta.get("education_level", "本科")
         subcategory_id = meta.get("subcategory_id")
 
-        name_el = response.css("h1.zy-name::text")
-        name = name_el.get("").strip() if name_el else meta.get("major_name", "")
-
-        if not name:
+        items = _parse_api_response(response)
+        if items is None:
+            logger.warning("Failed to parse specialities response")
             return
 
-        # Extract source_id from URL
-        source_id = response.url.rstrip("/").split("/")[-1] if response.url else None
+        for spec in items:
+            code = spec.get("zydm", "")
+            name = spec.get("zymc", "")
+            spec_id = spec.get("specId", "")
+            satisfaction = spec.get("zymyd", "")
 
-        data = {
-            "source_id": source_id,
-            "subcategory_id": subcategory_id,
-            "name": name,
-            "education_level": education_level,
-        }
-
-        # Extract detail fields
-        for row in response.css("div.zy-detail-item"):
-            label_el = row.css("span.label::text")
-            value_el = row.css("span.value::text")
-            if not label_el or not value_el:
+            if not name:
                 continue
-            label = label_el.get("").strip()
-            value = value_el.get("").strip()
 
-            field_map = {
-                "专业代码": "code",
-                "修业年限": "duration",
-                "授予学位": "degree",
-                "就业率": "employment_rate",
+            data = {
+                "source_id": spec_id,
+                "subcategory_id": subcategory_id,
+                "name": name,
+                "code": code,
+                "education_level": education_level,
             }
-            if label in field_map:
-                data[field_map[label]] = value
+            if satisfaction and satisfaction != "0.0":
+                data["satisfaction_score"] = satisfaction
 
-        # Extract description
-        desc_el = response.css("div.zy-description")
-        if desc_el:
-            data["description"] = desc_el.get("").strip()[:5000]
+            item = validate_item(MajorItem, data)
+            if item:
+                yield item
+                await self.process_item(
+                    item,
+                    entity_type="majors",
+                    unique_keys={"code": code, "education_level": education_level},
+                    upsert_fn=upsert_major,
+                )
 
-        # Extract graduate directions
-        grad_el = response.css("div.zy-graduate")
-        if grad_el:
-            data["graduate_directions"] = grad_el.get("").strip()[:2000]
 
-        item = validate_item(MajorItem, data)
-        if item:
-            yield item
-            await self.process_item(
-                item,
-                entity_type="majors",
-                unique_keys={"code": item.get("code"), "education_level": education_level},
-                upsert_fn=upsert_major,
-            )
+def _parse_api_response(response: Response) -> list[dict] | None:
+    """Parse the standard API response format: {"msg": [...], "flag": true}."""
+    try:
+        result = json.loads(response.text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    if not isinstance(result, dict) or not result.get("flag"):
+        return None
+
+    msg = result.get("msg")
+    if not isinstance(msg, list):
+        return None
+    return msg

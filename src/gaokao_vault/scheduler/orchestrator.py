@@ -69,7 +69,15 @@ class Orchestrator:
         logger.info("Starting full crawl orchestration (mode=%s)", self.mode)
 
         logger.info("=== Phase 2: Core entities ===")
-        await self._run_phase([t.value for t in PHASE2_TYPES])
+        p2_results = await self._run_phase([t.value for t in PHASE2_TYPES])
+        if p2_results is not None:
+            failed = sum(
+                1 for r in p2_results if isinstance(r, Exception) or (isinstance(r, dict) and r.get("failed", 0) > 0)
+            )
+            if failed:
+                logger.warning(
+                    "Phase 2: %d/%d spiders had failures — Phase 3 data may be incomplete", failed, len(p2_results)
+                )
 
         logger.info("=== Phase 3: Associations ===")
         await self._run_phase([t.value for t in PHASE3_TYPES])
@@ -87,6 +95,7 @@ class Orchestrator:
             return {"failed": 1}
 
         task_id = await self.task_manager.start_task(task_type, {"mode": self.mode})
+        timeout = self.config.spider_timeout
 
         try:
             spider = spider_cls(
@@ -96,11 +105,15 @@ class Orchestrator:
                 config=self.config,
                 app_config=self._app_config,
             )
+            logger.info("Starting spider %s (timeout=%ds)", task_type, timeout)
             # spider.start() is synchronous and manages its own event loop internally.
             # Run it in a thread to avoid blocking the current async loop.
-            result = await asyncio.to_thread(
-                spider.start,
-                crawldir=self.config.crawl_dir,
+            result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    spider.start,
+                    crawldir=self.config.crawl_dir,
+                ),
+                timeout=timeout,
             )
             stats = spider._stats
             logger.info(
@@ -109,25 +122,38 @@ class Orchestrator:
                 result.completed,
                 result.stats.items_scraped,
             )
-        except Exception as e:
+        except asyncio.TimeoutError:
+            logger.warning("Spider %s timed out after %ds", task_type, timeout)
+            stats = {"new": 0, "updated": 0, "unchanged": 0, "failed": 1}
+            await self.task_manager.finish_task(task_id, stats, error=f"Timed out after {timeout}s")
+            return stats
+        except Exception as exc:
             logger.exception("Spider %s failed", task_type)
             stats = {"new": 0, "updated": 0, "unchanged": 0, "failed": 1}
-            await self.task_manager.finish_task(task_id, stats, error=str(e))
+            await self.task_manager.finish_task(task_id, stats, error=str(exc))
             return stats
         else:
             await self.task_manager.finish_task(task_id, stats)
             return stats
 
-    async def _run_phase(self, task_types: list[str]) -> None:
+    async def _run_phase(self, task_types: list[str]) -> list | None:
         valid_types = [t for t in task_types if t in SPIDER_MAP]
         if not valid_types:
-            return
+            return None
 
         tasks = [self.run_single(t) for t in valid_types]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=self.config.phase_timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Phase timed out after %ds. Types: %s", self.config.phase_timeout, valid_types)
+            return None
 
         for task_type, result in zip(valid_types, results, strict=True):
             if isinstance(result, Exception):
                 logger.error("Phase task %s failed: %s", task_type, result)
             else:
                 logger.info("Phase task %s stats: %s", task_type, result)
+        return results
