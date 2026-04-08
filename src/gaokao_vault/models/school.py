@@ -1,6 +1,19 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+_VARCHAR_LIMITS: dict[str, int] = {
+    "name": 100,
+    "city": 50,
+    "authority": 100,
+    "level": 20,
+    "school_type": 30,
+    "website": 255,
+    "phone": 100,
+    "email": 100,
+    "address": 255,
+    "logo_url": 255,
+}
 
 
 class SchoolItem(BaseModel):
@@ -23,6 +36,15 @@ class SchoolItem(BaseModel):
     address: str | None = None
     introduction: str | None = None
     logo_url: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def truncate_long_strings(cls, data: dict) -> dict:
+        for field_name, max_len in _VARCHAR_LIMITS.items():
+            val = data.get(field_name)
+            if isinstance(val, str) and len(val) > max_len:
+                data[field_name] = val[:max_len]
+        return data
 
 
 class SchoolSatisfactionItem(BaseModel):
