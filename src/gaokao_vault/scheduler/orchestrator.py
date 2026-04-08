@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 import asyncpg
 
@@ -24,6 +25,17 @@ from gaokao_vault.spiders.special_spider import SpecialSpider
 from gaokao_vault.spiders.timeline_spider import TimelineSpider
 
 logger = logging.getLogger(__name__)
+
+
+def _is_checkpoint_error(exc: BaseException) -> bool:
+    """Check if an exception is a non-fatal checkpoint serialization/file error."""
+    if hasattr(exc, "exceptions"):  # ExceptionGroup
+        return all(_is_checkpoint_error(e) for e in exc.exceptions)  # ty: ignore[not-iterable]
+    msg = str(exc).lower()
+    if isinstance(exc, AttributeError) and "pickle" in msg:
+        return True
+    return isinstance(exc, (FileNotFoundError, OSError)) and "checkpoint" in msg
+
 
 SPIDER_MAP: dict[str, type[BaseGaokaoSpider]] = {
     TaskType.SCHOOLS: SchoolSpider,
@@ -104,7 +116,7 @@ class Orchestrator:
                 mode=self.mode,
                 config=self.config,
                 app_config=self._app_config,
-                crawldir=self.config.crawl_dir,
+                crawldir=os.path.join(self.config.crawl_dir, task_type),
             )
         except Exception as exc:
             logger.exception("Spider %s construction failed", task_type)
@@ -147,8 +159,22 @@ class Orchestrator:
     @staticmethod
     async def _run_spider_stream(spider) -> None:
         """Consume spider.stream() to drive the crawl in the current event loop."""
-        async for _item in spider.stream():
-            pass  # items are processed in spider callbacks via process_item
+        try:
+            async for _item in spider.stream():
+                pass  # items are processed in spider callbacks via process_item
+        except Exception as eg:
+            if not hasattr(eg, "split"):
+                raise
+            checkpoint_errors, other_errors = eg.split(_is_checkpoint_error)  # ty: ignore[call-non-callable]
+            if checkpoint_errors:
+                logger.warning(
+                    "Ignoring %d checkpoint error(s) in spider %s: %s",
+                    len(checkpoint_errors.exceptions),
+                    spider.name,
+                    checkpoint_errors,
+                )
+            if other_errors:
+                raise other_errors from None
 
     async def _run_phase(self, task_types: list[str]) -> list | None:
         valid_types = [t for t in task_types if t in SPIDER_MAP]
