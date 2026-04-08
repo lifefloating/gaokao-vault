@@ -191,12 +191,15 @@ def _parse_api_response(response: Response) -> list[dict] | None:
     try:
         result = json.loads(response.text)
     except (json.JSONDecodeError, TypeError):
+        logger.debug("mlCategory response is not valid JSON: %.200s", response.text)
         return None
 
     if not isinstance(result, dict) or not result.get("flag"):
+        logger.debug("mlCategory response missing flag or not dict: %.200s", response.text)
         return None
 
     msg = result.get("msg")
     if not isinstance(msg, list):
+        logger.debug("mlCategory msg is not a list: type=%s, %.200s", type(msg).__name__, response.text)
         return None
     return msg

@@ -122,10 +122,11 @@ class Orchestrator:
                 timeout=timeout,
             )
             stats = spider._stats
+            items_scraped = stats.get("new", 0) + stats.get("updated", 0)
             logger.info(
                 "Spider %s completed items_scraped=%d",
                 task_type,
-                spider.stats.items_scraped,
+                items_scraped,
             )
         except asyncio.TimeoutError:
             logger.warning("Spider %s timed out after %ds, calling pause()", task_type, timeout)

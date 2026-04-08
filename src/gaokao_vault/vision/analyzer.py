@@ -68,6 +68,9 @@ class VisionAnalyzer:
             return []
 
         content = (response.output_text or "").strip()
+        if not content:
+            logger.warning("Vision API returned empty content for %s %d", province_name, year)
+            return []
         return self._parse_response(content, province_name, year)
 
     def _resolve_image_url(self, image_path: Path, province_name: str, year: int) -> str | None:
