@@ -104,27 +104,34 @@ class Orchestrator:
                 mode=self.mode,
                 config=self.config,
                 app_config=self._app_config,
+                crawldir=self.config.crawl_dir,
             )
+        except Exception as exc:
+            logger.exception("Spider %s construction failed", task_type)
+            stats = {"new": 0, "updated": 0, "unchanged": 0, "failed": 1}
+            await self.task_manager.finish_task(task_id, stats, error=str(exc))
+            return stats
+
+        try:
             logger.info("Starting spider %s (timeout=%ds)", task_type, timeout)
-            # spider.start() is synchronous and manages its own event loop internally.
-            # Run it in a thread to avoid blocking the current async loop.
-            result = await asyncio.wait_for(
-                asyncio.to_thread(
-                    spider.start,
-                    crawldir=self.config.crawl_dir,
-                ),
+            # Use spider.stream() — a native async interface that runs in the
+            # current event loop.  On timeout spider.pause() gracefully shuts
+            # down the crawl (saves checkpoint, closes browser sessions).
+            await asyncio.wait_for(
+                self._run_spider_stream(spider),
                 timeout=timeout,
             )
             stats = spider._stats
             logger.info(
-                "Spider %s completed=%s items_scraped=%d",
+                "Spider %s completed items_scraped=%d",
                 task_type,
-                result.completed,
-                result.stats.items_scraped,
+                spider.stats.items_scraped,
             )
         except asyncio.TimeoutError:
-            logger.warning("Spider %s timed out after %ds", task_type, timeout)
-            stats = {"new": 0, "updated": 0, "unchanged": 0, "failed": 1}
+            logger.warning("Spider %s timed out after %ds, calling pause()", task_type, timeout)
+            spider.pause()
+            stats = spider._stats
+            stats["failed"] = max(stats.get("failed", 0), 1)
             await self.task_manager.finish_task(task_id, stats, error=f"Timed out after {timeout}s")
             return stats
         except Exception as exc:
@@ -135,6 +142,12 @@ class Orchestrator:
         else:
             await self.task_manager.finish_task(task_id, stats)
             return stats
+
+    @staticmethod
+    async def _run_spider_stream(spider) -> None:
+        """Consume spider.stream() to drive the crawl in the current event loop."""
+        async for _item in spider.stream():
+            pass  # items are processed in spider callbacks via process_item
 
     async def _run_phase(self, task_types: list[str]) -> list | None:
         valid_types = [t for t in task_types if t in SPIDER_MAP]
