@@ -29,10 +29,17 @@ def _make_screenshot_action(province_name: str, year: int) -> tuple[Callable, Pa
     filename = f"{province_name}_{year}_{timestamp}.png"
     filepath = SCREENSHOT_DIR / filename
 
-    async def take_screenshot(page):
-        await page.screenshot(path=str(filepath), full_page=True)
+    return _ScreenshotAction(filepath), filepath
 
-    return take_screenshot, filepath
+
+class _ScreenshotAction:
+    """Pickle-safe page_action that takes a full-page screenshot."""
+
+    def __init__(self, filepath: Path):
+        self.filepath = filepath
+
+    async def __call__(self, page):
+        await page.screenshot(path=str(self.filepath), full_page=True)
 
 
 class ScoreLineSpider(BaseGaokaoSpider):

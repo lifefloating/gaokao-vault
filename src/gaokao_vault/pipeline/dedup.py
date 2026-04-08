@@ -36,11 +36,6 @@ TABLE_MAP: dict[str, tuple[str, str, list[str]]] = {
         "enrollment_type = $1 AND school_id = $2 AND year = $3",
         ["enrollment_type", "school_id", "year"],
     ),
-    "announcements": (
-        "provincial_announcements",
-        "province_id = $1 AND title = $2",
-        ["province_id", "title"],
-    ),
     "major_interpretations": (
         "major_interpretations",
         "major_id = $1 AND title = $2",

@@ -5,7 +5,6 @@ from __future__ import annotations
 from gaokao_vault.constants import TaskType
 from gaokao_vault.scheduler.orchestrator import SPIDER_MAP
 from gaokao_vault.spiders import (
-    AnnouncementSpider,
     BaseGaokaoSpider,
     CharterSpider,
     EnrollmentPlanSpider,
@@ -29,7 +28,6 @@ class TestSpiderStructure:
             MajorSpider,
             ScoreLineSpider,
             TimelineSpider,
-            AnnouncementSpider,
             SchoolMajorSpider,
             ScoreSegmentSpider,
             EnrollmentPlanSpider,
@@ -49,7 +47,6 @@ class TestSpiderStructure:
             MajorSpider,
             ScoreLineSpider,
             TimelineSpider,
-            AnnouncementSpider,
         ]
         for cls in spiders:
             assert hasattr(cls, "task_type"), f"{cls.__name__} missing 'task_type'"
@@ -58,7 +55,6 @@ class TestSpiderStructure:
     def test_spider_inherits_base(self):
         assert issubclass(SchoolSpider, BaseGaokaoSpider)
         assert issubclass(MajorSpider, BaseGaokaoSpider)
-        assert issubclass(AnnouncementSpider, BaseGaokaoSpider)
 
     def test_spider_map_complete(self):
         expected_types = {t.value for t in TaskType if t not in (TaskType.MAJOR_CATEGORIES,)}

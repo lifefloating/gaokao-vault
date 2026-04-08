@@ -9,7 +9,6 @@ import asyncpg
 from gaokao_vault.config import AppConfig, CrawlConfig, DatabaseConfig
 from gaokao_vault.constants import PHASE2_TYPES, PHASE3_TYPES, TaskType
 from gaokao_vault.scheduler.task_manager import TaskManager
-from gaokao_vault.spiders.announcement_spider import AnnouncementSpider
 from gaokao_vault.spiders.base import BaseGaokaoSpider
 from gaokao_vault.spiders.charter_spider import CharterSpider
 from gaokao_vault.spiders.enrollment_plan_spider import EnrollmentPlanSpider
@@ -32,7 +31,7 @@ def _is_checkpoint_error(exc: BaseException) -> bool:
     if hasattr(exc, "exceptions"):  # ExceptionGroup
         return all(_is_checkpoint_error(e) for e in exc.exceptions)  # ty: ignore[not-iterable]
     msg = str(exc).lower()
-    if isinstance(exc, AttributeError) and "pickle" in msg:
+    if isinstance(exc, AttributeError) and ("pickle" in msg or "can't get local object" in msg):
         return True
     return isinstance(exc, (FileNotFoundError, OSError)) and "checkpoint" in msg
 
@@ -42,7 +41,6 @@ SPIDER_MAP: dict[str, type[BaseGaokaoSpider]] = {
     TaskType.MAJORS: MajorSpider,
     TaskType.SCORE_LINES: ScoreLineSpider,
     TaskType.TIMELINES: TimelineSpider,
-    TaskType.ANNOUNCEMENTS: AnnouncementSpider,
     TaskType.SCHOOL_MAJORS: SchoolMajorSpider,
     TaskType.SCORE_SEGMENTS: ScoreSegmentSpider,
     TaskType.ENROLLMENT_PLANS: EnrollmentPlanSpider,
@@ -58,7 +56,7 @@ class Orchestrator:
     """Three-phase crawl orchestrator.
 
     Phase 1: Dimension seeds (provinces, subject_categories) — handled by DB migration.
-    Phase 2: Core entities (schools, majors, score_lines, timelines, announcements) — parallel.
+    Phase 2: Core entities (schools, majors, score_lines, timelines) — parallel.
     Phase 3: Associations (school_majors, score_segments, etc.) — parallel, depends on Phase 2.
     """
 

@@ -13,13 +13,3 @@ class SpecialEnrollmentItem(BaseModel):
     content: str | None = None
     publish_date: date | None = None
     source_url: str | None = None
-
-
-class AnnouncementItem(BaseModel):
-    province_id: int
-    year: int | None = None
-    title: str
-    content: str | None = None
-    announcement_type: str | None = None
-    publish_date: date | None = None
-    source_url: str | None = None

@@ -1,4 +1,3 @@
-from gaokao_vault.spiders.announcement_spider import AnnouncementSpider
 from gaokao_vault.spiders.base import BaseGaokaoSpider
 from gaokao_vault.spiders.charter_spider import CharterSpider
 from gaokao_vault.spiders.enrollment_plan_spider import EnrollmentPlanSpider
@@ -14,7 +13,6 @@ from gaokao_vault.spiders.special_spider import SpecialSpider
 from gaokao_vault.spiders.timeline_spider import TimelineSpider
 
 __all__ = [
-    "AnnouncementSpider",
     "BaseGaokaoSpider",
     "CharterSpider",
     "EnrollmentPlanSpider",

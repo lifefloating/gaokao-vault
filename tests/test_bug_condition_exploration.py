@@ -98,7 +98,6 @@ entity_types_st = st.sampled_from([
     "majors",
     "score_lines",
     "timelines",
-    "announcements",
     "school_majors",
     "enrollment_plans",
     "charters",

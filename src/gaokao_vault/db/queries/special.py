@@ -23,25 +23,3 @@ async def upsert_special_enrollment(conn: asyncpg.Connection, data: dict) -> int
         data.get("crawl_task_id"),
     )
     return row["id"] if row else 0
-
-
-async def upsert_announcement(conn: asyncpg.Connection, data: dict) -> int:
-    row = await conn.fetchrow(
-        """
-        INSERT INTO provincial_announcements (province_id, year, title, content,
-            announcement_type, publish_date, source_url, content_hash, crawl_task_id)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-        ON CONFLICT DO NOTHING
-        RETURNING id
-        """,
-        data["province_id"],
-        data.get("year"),
-        data["title"],
-        data.get("content"),
-        data.get("announcement_type"),
-        data.get("publish_date"),
-        data.get("source_url"),
-        data.get("content_hash"),
-        data.get("crawl_task_id"),
-    )
-    return row["id"] if row else 0

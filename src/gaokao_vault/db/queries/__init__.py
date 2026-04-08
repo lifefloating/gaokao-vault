@@ -10,7 +10,7 @@ from gaokao_vault.db.queries.majors import (
 )
 from gaokao_vault.db.queries.schools import find_school_by_sch_id, upsert_school, upsert_school_satisfaction
 from gaokao_vault.db.queries.scores import batch_upsert_score_segments, upsert_score_line
-from gaokao_vault.db.queries.special import upsert_announcement, upsert_special_enrollment
+from gaokao_vault.db.queries.special import upsert_special_enrollment
 
 __all__ = [
     "batch_upsert_score_segments",
@@ -19,7 +19,6 @@ __all__ = [
     "find_school_by_sch_id",
     "insert_snapshot",
     "update_task_stats",
-    "upsert_announcement",
     "upsert_charter",
     "upsert_enrollment_plan",
     "upsert_major",
