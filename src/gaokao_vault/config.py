@@ -51,7 +51,7 @@ class S3Config(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="S3_")
 
     endpoint_url: str = "http://minio:9000"
-    public_url: str = "http://localhost:9000"
+    public_url: str = "http://localhost/minio-s3"
     access_key: str = "minioadmin"
     secret_key: str = "minioadmin"  # noqa: S105
     bucket_name: str = "gaokao-screenshots"

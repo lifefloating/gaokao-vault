@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import mimetypes
 from pathlib import Path
+from urllib.parse import urlparse
 
 import boto3
 
@@ -53,7 +54,12 @@ class S3Storage:
         return key
 
     def presigned_url(self, key: str) -> str:
-        """Generate a presigned GET URL, rewritten to use the public endpoint."""
+        """Generate a presigned GET URL, rewritten to use the public endpoint.
+
+        Supports public URLs with path prefixes (e.g. ``http://host/minio-s3``)
+        for reverse-proxy setups where the external API (OpenAI) cannot reach
+        non-standard ports like 9000.
+        """
         url = self._client.generate_presigned_url(
             "get_object",
             Params={"Bucket": self._bucket, "Key": key},
@@ -62,7 +68,9 @@ class S3Storage:
         # Replace internal Docker endpoint with public URL so the
         # external API proxy can reach the image.
         if self._public_url != self._endpoint_url:
-            url = url.replace(self._endpoint_url, self._public_url, 1)
+            parsed_public = urlparse(self._public_url)
+            public_prefix = f"{parsed_public.scheme}://{parsed_public.netloc}{parsed_public.path.rstrip('/')}"
+            url = url.replace(self._endpoint_url, public_prefix, 1)
         return url
 
     def delete_image(self, key: str) -> None:
