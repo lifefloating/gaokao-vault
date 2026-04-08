@@ -13,7 +13,7 @@ from gaokao_vault.db.queries.majors import (
 )
 from gaokao_vault.models.major import MajorCategoryItem, MajorItem, MajorSubcategoryItem
 from gaokao_vault.pipeline.validator import validate_item
-from gaokao_vault.spiders.base import BaseGaokaoSpider
+from gaokao_vault.spiders.base import BLOCKED_STATUS_CODES, BaseGaokaoSpider
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +37,17 @@ class MajorSpider(BaseGaokaoSpider):
     name: str = "major_spider"
     task_type: str = TaskType.MAJORS
 
+    # Kwargs forwarded to the stealth session for every API request so the
+    # browser presents a Google-search referer and waits for any JS challenge.
+    _STEALTH_KWARGS: dict = {"google_search": True, "network_idle": True}  # noqa: RUF012
+
     async def start_requests(self):
         # Warmup: visit the SPA page to establish cookies/session
         yield Request(
             f"{_ZYK_API}/",
             callback=self.parse_warmup,
             sid="stealth",
+            **self._STEALTH_KWARGS,
         )
 
     async def parse_warmup(self, response: Response):
@@ -55,6 +60,7 @@ class MajorSpider(BaseGaokaoSpider):
                 callback=self.parse_ml_categories,
                 sid="stealth",
                 meta={"education_level": level_label, "cc_key": cc_key},
+                **self._STEALTH_KWARGS,
             )
 
     async def parse_ml_categories(self, response: Response):
@@ -66,7 +72,12 @@ class MajorSpider(BaseGaokaoSpider):
 
         items = _parse_api_response(response)
         if items is None:
-            logger.warning("Failed to parse mlCategory response for %s", education_level)
+            logger.warning(
+                "Failed to parse mlCategory response for %s (HTTP %s, url=%s)",
+                education_level,
+                response.status,
+                response.url,
+            )
             return
 
         for ml in items:
@@ -98,6 +109,7 @@ class MajorSpider(BaseGaokaoSpider):
                     "category_id": cat_id,
                     "ml_name": ml_name,
                 },
+                **self._STEALTH_KWARGS,
             )
 
     async def parse_xk_categories(self, response: Response):
@@ -110,7 +122,7 @@ class MajorSpider(BaseGaokaoSpider):
 
         items = _parse_api_response(response)
         if items is None:
-            logger.warning("Failed to parse xkCategory response")
+            logger.warning("Failed to parse xkCategory response (HTTP %s, url=%s)", response.status, response.url)
             return
 
         for xk in items:
@@ -141,6 +153,7 @@ class MajorSpider(BaseGaokaoSpider):
                     "education_level": education_level,
                     "subcategory_id": sub_id,
                 },
+                **self._STEALTH_KWARGS,
             )
 
     async def parse_specialities(self, response: Response):
@@ -153,7 +166,7 @@ class MajorSpider(BaseGaokaoSpider):
 
         items = _parse_api_response(response)
         if items is None:
-            logger.warning("Failed to parse specialities response")
+            logger.warning("Failed to parse specialities response (HTTP %s, url=%s)", response.status, response.url)
             return
 
         for spec in items:
@@ -188,18 +201,31 @@ class MajorSpider(BaseGaokaoSpider):
 
 def _parse_api_response(response: Response) -> list[dict] | None:
     """Parse the standard API response format: {"msg": [...], "flag": true}."""
+    if response.status in BLOCKED_STATUS_CODES:
+        logger.warning("API blocked (HTTP %s) for %s", response.status, response.url)
+        return None
+
     try:
         result = json.loads(response.text)
     except (json.JSONDecodeError, TypeError):
-        logger.debug("mlCategory response is not valid JSON: %.200s", response.text)
+        logger.warning(
+            "API response is not valid JSON (HTTP %s) for %s: %.200s", response.status, response.url, response.text
+        )
         return None
 
     if not isinstance(result, dict) or not result.get("flag"):
-        logger.debug("mlCategory response missing flag or not dict: %.200s", response.text)
+        logger.warning(
+            "API response missing flag or not dict (HTTP %s) for %s: %.200s",
+            response.status,
+            response.url,
+            response.text,
+        )
         return None
 
     msg = result.get("msg")
     if not isinstance(msg, list):
-        logger.debug("mlCategory msg is not a list: type=%s, %.200s", type(msg).__name__, response.text)
+        logger.warning(
+            "API msg is not a list: type=%s (HTTP %s) for %s", type(msg).__name__, response.status, response.url
+        )
         return None
     return msg

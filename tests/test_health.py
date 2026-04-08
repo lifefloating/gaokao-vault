@@ -27,21 +27,25 @@ _PATCH_TARGET = "gaokao_vault.health.create_openai_client"
 
 
 class _FakeStream:
-    """Async-iterable mock that yields one event then stops."""
+    """Async-iterable mock that yields a text delta event then stops."""
 
     def __init__(self) -> None:
-        self._event = MagicMock(type="response.created")
-        self._yielded = False
+        self._events = [
+            MagicMock(type="response.created"),
+            MagicMock(type="response.output_text.delta", delta="hi"),
+        ]
+        self._index = 0
         self.closed = False
 
     def __aiter__(self):
         return self
 
     async def __anext__(self):
-        if self._yielded:
+        if self._index >= len(self._events):
             raise StopAsyncIteration
-        self._yielded = True
-        return self._event
+        event = self._events[self._index]
+        self._index += 1
+        return event
 
     async def close(self):
         self.closed = True
@@ -157,7 +161,7 @@ class TestCheckOpenaiHealthUnit:
             mock_client.responses.create.assert_called_once_with(
                 model="gpt-5.4",
                 input="hi",
-                max_output_tokens=1,
+                max_output_tokens=5,
                 stream=True,
             )
 

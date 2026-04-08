@@ -59,15 +59,23 @@ class VisionAnalyzer:
                     ),
                 ],
             }
-            response = await self.client.responses.create(
+            # Use streaming to work around proxies that don't populate the
+            # non-streaming ``output`` field but do send text via SSE deltas.
+            stream = await self.client.responses.create(
                 model=self._model,
                 input=[input_msg],
+                stream=True,
             )
+            content = ""
+            async for event in stream:
+                if event.type == "response.output_text.delta":
+                    content += event.delta
+            await stream.close()
+            content = content.strip()
         except Exception:
             logger.exception("Vision API call failed for %s %d", province_name, year)
             return []
 
-        content = (response.output_text or "").strip()
         if not content:
             logger.warning("Vision API returned empty content for %s %d", province_name, year)
             return []

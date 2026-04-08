@@ -18,13 +18,17 @@ class HealthResult:
     message: str
 
 
-async def _consume_first_event(stream) -> None:
-    """Consume only the first SSE event, then close the stream."""
+async def _consume_first_text_delta(stream) -> bool:
+    """Consume events until a text delta arrives (or stream ends), then close."""
+    got_content = False
     try:
-        async for _event in stream:
-            break
+        async for event in stream:
+            if event.type == "response.output_text.delta" and event.delta:
+                got_content = True
+                break
     finally:
         await stream.close()
+    return got_content
 
 
 async def check_openai_health(
@@ -54,10 +58,12 @@ async def check_openai_health(
         stream = await client.responses.create(
             model=config.health_model,
             input="hi",
-            max_output_tokens=1,
+            max_output_tokens=5,
             stream=True,
         )
-        await asyncio.wait_for(_consume_first_event(stream), timeout=timeout)
+        got_content = await asyncio.wait_for(_consume_first_text_delta(stream), timeout=timeout)
+        if not got_content:
+            return HealthResult(ok=False, message="API connected but no text content generated")
         return HealthResult(ok=True, message="ok")
     except openai.AuthenticationError:
         return HealthResult(ok=False, message="Authentication failed: HTTP 401")
