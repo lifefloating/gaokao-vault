@@ -39,7 +39,7 @@ class MajorSpider(BaseGaokaoSpider):
 
     # Kwargs forwarded to the stealth session for every API request so the
     # browser presents a Google-search referer and waits for any JS challenge.
-    _STEALTH_KWARGS: dict = {"google_search": True, "network_idle": True}  # noqa: RUF012
+    _STEALTH_KWARGS: dict = {"google_search": False, "network_idle": True}  # noqa: RUF012
 
     async def start_requests(self):
         # Warmup: visit the SPA page to establish cookies/session
@@ -200,16 +200,29 @@ class MajorSpider(BaseGaokaoSpider):
 
 
 def _parse_api_response(response: Response) -> list[dict] | None:
-    """Parse the standard API response format: {"msg": [...], "flag": true}."""
+    """Parse the standard API response format: {"msg": [...], "flag": true}.
+
+    Uses ``response.body`` instead of ``response.text`` because the stealth
+    browser session returns an empty ``text`` for JSON API endpoints (the DOM
+    has no meaningful text nodes), while ``body`` contains the raw bytes.
+    """
     if response.status in BLOCKED_STATUS_CODES:
         logger.warning("API blocked (HTTP %s) for %s", response.status, response.url)
         return None
 
+    raw = response.body
+    if not raw:
+        logger.warning("API response body is empty (HTTP %s) for %s", response.status, response.url)
+        return None
+
     try:
-        result = json.loads(response.text)
-    except (json.JSONDecodeError, TypeError):
+        result = json.loads(raw)
+    except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
         logger.warning(
-            "API response is not valid JSON (HTTP %s) for %s: %.200s", response.status, response.url, response.text
+            "API response is not valid JSON (HTTP %s) for %s: %.200s",
+            response.status,
+            response.url,
+            raw.decode("utf-8", errors="replace")[:200],
         )
         return None
 
@@ -218,7 +231,7 @@ def _parse_api_response(response: Response) -> list[dict] | None:
             "API response missing flag or not dict (HTTP %s) for %s: %.200s",
             response.status,
             response.url,
-            response.text,
+            raw.decode("utf-8", errors="replace")[:200],
         )
         return None
 
