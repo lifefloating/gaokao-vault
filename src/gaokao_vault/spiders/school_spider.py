@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 from scrapling.spiders import Request, Response
 
 from gaokao_vault.constants import BASE_URL, TaskType
-from gaokao_vault.db.queries.schools import upsert_school
+from gaokao_vault.db.queries.schools import find_school_by_sch_id, upsert_school
 from gaokao_vault.models.school import SchoolItem
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
@@ -27,7 +27,8 @@ class SchoolSpider(BaseGaokaoSpider):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._province_map: dict[str, int] | None = None
-        self._scheduled_school_ids: set[int] = set()
+        self._scheduled_school_candidates: dict[int, int | None] = {}
+        self._refreshed_school_ids: set[int] = set()
         self._visited_list_urls: set[str] = set()
 
     async def _load_province_map(self) -> dict[str, int]:
@@ -59,15 +60,56 @@ class SchoolSpider(BaseGaokaoSpider):
         return None
 
     def _schedule_school_detail(self, sch_id: int, candidate_province_id: int | None) -> Request | None:
-        if sch_id in self._scheduled_school_ids:
-            return None
+        if sch_id not in self._scheduled_school_candidates:
+            self._scheduled_school_candidates[sch_id] = candidate_province_id
+            return Request(
+                f"{BASE_URL}/sch/schoolInfoMain--schId-{sch_id}.dhtml",
+                callback=self.parse,
+                meta={"sch_id": sch_id, "candidate_province_id": candidate_province_id},
+            )
 
-        self._scheduled_school_ids.add(sch_id)
-        return Request(
-            f"{BASE_URL}/sch/schoolInfoMain--schId-{sch_id}.dhtml",
-            callback=self.parse,
-            meta={"sch_id": sch_id, "candidate_province_id": candidate_province_id},
+        if (
+            candidate_province_id is not None
+            and self._scheduled_school_candidates[sch_id] is None
+            and sch_id not in self._refreshed_school_ids
+        ):
+            self._scheduled_school_candidates[sch_id] = candidate_province_id
+            self._refreshed_school_ids.add(sch_id)
+            return Request(
+                f"{BASE_URL}/sch/schoolInfoMain--schId-{sch_id}.dhtml",
+                callback=self.parse,
+                meta={"sch_id": sch_id, "candidate_province_id": candidate_province_id},
+            )
+
+        return None
+
+    async def _preserve_existing_province_id(self, item: dict[str, Any]) -> dict[str, Any]:
+        if item.get("province_id") is not None:
+            return item
+
+        async with (await self._get_pool()).acquire() as conn:
+            existing = await find_school_by_sch_id(conn, item["sch_id"])
+        if existing and existing.get("province_id") is not None:
+            item["province_id"] = existing["province_id"]
+        return item
+
+    @staticmethod
+    def _warmup_url() -> str:
+        return (
+            f"{BASE_URL}/sch/search--ss-on,searchType-1,dataType-2,"
+            "schName-,schProvince-,schAddress-,schType-,xlcc-,yxls-,"
+            "dual-,naession-,f211-,f985-,autonomy-,central-,start-0.dhtml"
         )
+
+    async def start_requests(self):
+        # Warmup: visit the list page first to establish Cookie/session state
+        yield Request(self._warmup_url(), callback=self.parse_warmup)
+        yield Request(SEARCH_ENTRY_URL, callback=self.parse_search_entry)
+
+        for sch_id in range(1, MAX_SCH_ID + 1):
+            request = self._schedule_school_detail(sch_id, None)
+            if request is not None:
+                yield request
 
     @staticmethod
     def _extract_sch_id_from_href(href: str) -> int | None:
@@ -89,16 +131,6 @@ class SchoolSpider(BaseGaokaoSpider):
 
         return urls
 
-    async def start_requests(self):
-        # Warmup: visit the list page first to establish Cookie/session state
-        warmup_url = (
-            f"{BASE_URL}/sch/search--ss-on,searchType-1,dataType-2,"
-            "schName-,schProvince-,schAddress-,schType-,xlcc-,yxls-,"
-            "dual-,naession-,f211-,f985-,autonomy-,central-,start-0.dhtml"
-        )
-        yield Request(warmup_url, callback=self.parse_warmup)
-        yield Request(SEARCH_ENTRY_URL, callback=self.parse_search_entry)
-
     async def parse_warmup(self, response):
         """Handle warmup response — just log and return."""
         logger.info("Warmup request completed: status=%s url=%s", response.status, response.url)
@@ -106,13 +138,11 @@ class SchoolSpider(BaseGaokaoSpider):
         yield  # make this an async generator to satisfy Request callback type
 
     async def parse_search_entry(self, response: Response):
-        found_province_links = False
         for link in response.css("a[href*='schProvince-'][href*='searchType-1']"):
             href = link.attrib.get("href", "").strip()
             if not href:
                 continue
 
-            found_province_links = True
             province_name = "".join(part.strip() for part in link.css("::text").getall() if part.strip())
             try:
                 candidate_province_id = await self._resolve_province_id(province_name)
@@ -133,14 +163,6 @@ class SchoolSpider(BaseGaokaoSpider):
                     "province_name": province_name,
                 },
             )
-
-        if found_province_links:
-            return
-
-        for sch_id in range(1, MAX_SCH_ID + 1):
-            request = self._schedule_school_detail(sch_id, None)
-            if request is not None:
-                yield request
 
     async def parse_school_list(self, response: Response):
         if response.request is None:
@@ -193,6 +215,7 @@ class SchoolSpider(BaseGaokaoSpider):
 
         item = validate_item(SchoolItem, data)
         if item:
+            item = await self._preserve_existing_province_id(item)
             yield item
             await self.process_item(
                 item,

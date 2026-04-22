@@ -48,7 +48,7 @@ async def upsert_school(conn: asyncpg.Connection, data: dict) -> int:
 
 
 async def find_school_by_sch_id(conn: asyncpg.Connection, sch_id: int) -> dict | None:
-    row = await conn.fetchrow("SELECT id, sch_id, name FROM schools WHERE sch_id = $1", sch_id)
+    row = await conn.fetchrow("SELECT id, sch_id, name, province_id FROM schools WHERE sch_id = $1", sch_id)
     return dict(row) if row else None
 
 

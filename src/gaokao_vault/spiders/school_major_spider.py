@@ -26,6 +26,18 @@ class SchoolMajorSpider(BaseGaokaoSpider):
     name: str = "school_major_spider"
     task_type: str = TaskType.SCHOOL_MAJORS
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._allow_name_fallback = False
+
+    async def _load_name_fallback_policy(self) -> bool:
+        async with (await self._get_pool()).acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT status, failed_items FROM crawl_tasks WHERE task_type = $1 ORDER BY id DESC LIMIT 1",
+                TaskType.MAJORS,
+            )
+        return bool(row and row["status"] == "success" and row["failed_items"] == 0)
+
     @staticmethod
     def _extract_code_from_href(href: str) -> str | None:
         if not href:
@@ -82,7 +94,7 @@ class SchoolMajorSpider(BaseGaokaoSpider):
             if row is not None:
                 return row["id"]
 
-        if name:
+        if name and self._allow_name_fallback:
             rows = await find_majors_by_name(conn, name)
             if len(rows) == 1:
                 return rows[0]["id"]
@@ -98,6 +110,18 @@ class SchoolMajorSpider(BaseGaokaoSpider):
                 )
                 return None
 
+        if name and not self._allow_name_fallback:
+            logger.warning(
+                "Name fallback disabled school_id=%s sch_id=%s data_code=%s href_code=%s name=%s url=%s",
+                school_id,
+                sch_id,
+                data_code,
+                href_code,
+                name,
+                page_url,
+            )
+            return None
+
         logger.warning(
             "Unable to resolve major school_id=%s sch_id=%s data_code=%s href_code=%s name=%s url=%s",
             school_id,
@@ -110,6 +134,12 @@ class SchoolMajorSpider(BaseGaokaoSpider):
         return None
 
     async def start_requests(self):
+        try:
+            self._allow_name_fallback = await self._load_name_fallback_policy()
+        except Exception:
+            logger.warning("Failed to load name fallback policy for school majors", exc_info=True)
+            self._allow_name_fallback = False
+
         async with (await self._get_pool()).acquire() as conn:
             rows = await conn.fetch("SELECT id, sch_id FROM schools ORDER BY id")
 

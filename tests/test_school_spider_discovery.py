@@ -9,6 +9,25 @@ from gaokao_vault.config import DatabaseConfig
 from gaokao_vault.spiders.school_spider import SchoolSpider
 
 
+class _Acquire:
+    def __init__(self, conn) -> None:
+        self.conn = conn
+
+    async def __aenter__(self):
+        return self.conn
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+class _FakePool:
+    def __init__(self, conn) -> None:
+        self.conn = conn
+
+    def acquire(self):
+        return _Acquire(self.conn)
+
+
 def _make_school_spider() -> SchoolSpider:
     db_config = DatabaseConfig(
         dsn="postgresql://test:test@localhost:5432/test_db",
@@ -75,9 +94,10 @@ _DETAIL_HTML = """
 def test_start_requests_emits_only_warmup_and_search_entry():
     spider = _make_school_spider()
 
-    requests = asyncio.run(_collect(spider.start_requests()))
+    with patch("gaokao_vault.spiders.school_spider.MAX_SCH_ID", 2):
+        requests = asyncio.run(_collect(spider.start_requests()))
 
-    assert len(requests) == 2
+    assert len(requests) == 4
     assert requests[0].callback.__name__ == "parse_warmup"
     assert requests[1].callback.__name__ == "parse_search_entry"
     assert requests[0].url == (
@@ -86,7 +106,8 @@ def test_start_requests_emits_only_warmup_and_search_entry():
         "dual-,naession-,f211-,f985-,autonomy-,central-,start-0.dhtml"
     )
     assert requests[1].url == "https://gaokao.chsi.com.cn/sch/search--ss-on,option-qg,searchType-1,start-0.dhtml"
-    assert all("schoolInfoMain--schId-" not in request.url for request in requests)
+    assert [request.meta["sch_id"] for request in requests[2:]] == [1, 2]
+    assert all(request.callback.__name__ == "parse" for request in requests[2:])
 
 
 def test_parse_search_entry_yields_province_requests():
@@ -126,20 +147,6 @@ def test_parse_search_entry_keeps_unmappable_province_links_when_resolution_fail
     assert len(requests) == 1
     assert requests[0].meta["candidate_province_id"] is None
     assert requests[0].callback.__name__ == "parse_school_list"
-
-
-def test_parse_search_entry_falls_back_to_bruteforce_when_no_province_links():
-    spider = _make_school_spider()
-    response = _make_response(
-        "<html><body><div class='search-filter'></div></body></html>",
-        "https://gaokao.chsi.com.cn/sch/search--ss-on,option-qg,searchType-1,start-0.dhtml",
-    )
-
-    with patch("gaokao_vault.spiders.school_spider.MAX_SCH_ID", 2):
-        requests = asyncio.run(_collect(spider.parse_search_entry(response)))
-
-    assert [request.meta["sch_id"] for request in requests] == [1, 2]
-    assert all(request.callback.__name__ == "parse" for request in requests)
 
 
 def test_parse_school_list_yields_detail_requests_and_next_page():
@@ -197,11 +204,37 @@ def test_parse_keeps_candidate_province_when_detail_resolution_raises():
     assert items[0]["province_id"] == 5
 
 
-def test_schedule_school_detail_deduplicates_by_sch_id():
+def test_parse_preserves_existing_province_when_current_item_has_none():
+    spider = _make_school_spider()
+    response = _make_response(
+        _DETAIL_HTML,
+        "https://gaokao.chsi.com.cn/sch/schoolInfoMain--schId-14.dhtml",
+        {"sch_id": 14, "candidate_province_id": None},
+    )
+    conn = AsyncMock()
+    conn.fetchrow = AsyncMock(return_value={"id": 1, "sch_id": 14, "name": "测试大学", "province_id": 7})
+    fake_pool = _FakePool(conn)
+
+    with (
+        patch.object(spider, "_resolve_province_id", new=AsyncMock(return_value=None)),
+        patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch.object(spider, "process_item", new=AsyncMock(return_value="new")),
+    ):
+        items = asyncio.run(_collect(spider.parse(response)))
+
+    assert len(items) == 1
+    assert items[0]["province_id"] == 7
+
+
+def test_schedule_school_detail_allows_one_candidate_refresh_after_bruteforce():
     spider = _make_school_spider()
 
-    first = spider._schedule_school_detail(12, 1)
+    first = spider._schedule_school_detail(12, None)
     second = spider._schedule_school_detail(12, 3)
+    third = spider._schedule_school_detail(12, 4)
 
     assert first is not None
-    assert second is None
+    assert first.meta["candidate_province_id"] is None
+    assert second is not None
+    assert second.meta["candidate_province_id"] == 3
+    assert third is None

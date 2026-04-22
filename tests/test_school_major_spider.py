@@ -109,6 +109,7 @@ def test_parse_keeps_existing_code_match_path():
 
 def test_parse_falls_back_to_exact_name_when_code_is_missing():
     spider = _make_school_major_spider()
+    spider._allow_name_fallback = True
     response = _make_response(
         """
         <html>
@@ -202,6 +203,7 @@ def test_parse_uses_bare_path_href_code_when_data_code_is_missing():
 
 def test_parse_skips_ambiguous_exact_name_matches(caplog):
     spider = _make_school_major_spider()
+    spider._allow_name_fallback = True
     response = _make_response(
         """
         <html>
@@ -233,3 +235,37 @@ def test_parse_skips_ambiguous_exact_name_matches(caplog):
     assert "Ambiguous major match" in caplog.text
     assert "data_code=BADCODE" in caplog.text
     assert "href_code=120201" in caplog.text
+
+
+def test_parse_skips_name_fallback_when_policy_disables_it(caplog):
+    spider = _make_school_major_spider()
+    spider._allow_name_fallback = False
+    response = _make_response(
+        """
+        <html>
+          <body>
+            <div class="major-list">
+              <a class="major-link" href="/zyk?name=临床医学">临床医学</a>
+            </div>
+          </body>
+        </html>
+        """,
+        "https://gaokao.chsi.com.cn/sch/schoolInfo--schId-6.dhtml",
+        {"school_id": 12, "sch_id": 6},
+    )
+
+    fake_pool = _FakePool(AsyncMock())
+
+    with (
+        patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch("gaokao_vault.spiders.school_major_spider.find_major_by_code", new=AsyncMock(return_value=None)),
+        patch(
+            "gaokao_vault.spiders.school_major_spider.find_majors_by_name",
+            new=AsyncMock(return_value=[{"id": 12, "name": "临床医学"}]),
+        ),
+        patch.object(spider, "process_item", new=AsyncMock(return_value="new")),
+    ):
+        items = asyncio.run(_collect(spider.parse(response)))
+
+    assert items == []
+    assert "Name fallback disabled" in caplog.text
