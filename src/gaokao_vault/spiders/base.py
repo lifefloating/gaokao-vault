@@ -8,7 +8,7 @@ import asyncpg
 from scrapling.fetchers import AsyncStealthySession
 from scrapling.spiders import Request, Response, Spider
 
-from gaokao_vault.anti_detect.proxy_pool import get_proxy_rotator
+from gaokao_vault.anti_detect.proxy_pool import get_proxy_diagnostics, get_proxy_rotator
 from gaokao_vault.anti_detect.ua_pool import IMPERSONATE_LIST
 from gaokao_vault.config import AppConfig, CrawlConfig, DatabaseConfig
 from gaokao_vault.db.connection import create_local_pool
@@ -56,8 +56,10 @@ class BaseGaokaoSpider(Spider):
         # Set _rs_wait_ms BEFORE super().__init__() because it calls
         # configure_sessions() which reads self._rs_wait_ms.
         self._rs_wait_ms = 10000  # default RS wait
+        self._browser_timeout_ms = 120000  # default browser navigation timeout
         if config:
             self._rs_wait_ms = config.rs_wait_ms
+            self._browser_timeout_ms = config.browser_timeout_ms
 
         super().__init__(**kwargs)
         self._db_config = db_config
@@ -121,6 +123,24 @@ class BaseGaokaoSpider(Spider):
 
     def configure_sessions(self, manager) -> None:
         rotator = get_proxy_rotator()
+        proxy_diagnostics = get_proxy_diagnostics()
+        if proxy_diagnostics["total_count"] == 0:
+            logger.warning(
+                "Network path: direct egress via host IP (use_freeproxy=%s paid=%d free=%d total=%d)",
+                proxy_diagnostics["use_freeproxy"],
+                proxy_diagnostics["paid_count"],
+                proxy_diagnostics["free_count"],
+                proxy_diagnostics["total_count"],
+            )
+        else:
+            logger.info(
+                "Network path: rotating proxies enabled (use_freeproxy=%s paid=%d free=%d total=%d sample=%s)",
+                proxy_diagnostics["use_freeproxy"],
+                proxy_diagnostics["paid_count"],
+                proxy_diagnostics["free_count"],
+                proxy_diagnostics["total_count"],
+                proxy_diagnostics["sample_proxies"],
+            )
         manager.add(
             "http",
             AsyncStealthySession(
@@ -129,6 +149,7 @@ class BaseGaokaoSpider(Spider):
                 block_webrtc=True,
                 hide_canvas=True,
                 network_idle=True,
+                timeout=self._browser_timeout_ms,
                 wait=self._rs_wait_ms,
                 extra_headers={"Referer": "https://gaokao.chsi.com.cn/"},
                 additional_args={"viewport": {"width": 1366, "height": 768}},
@@ -144,6 +165,7 @@ class BaseGaokaoSpider(Spider):
                 block_webrtc=True,
                 hide_canvas=True,
                 network_idle=True,
+                timeout=self._browser_timeout_ms,
                 wait=self._rs_wait_ms,
                 extra_headers={"Referer": "https://gaokao.chsi.com.cn/"},
                 additional_args={"viewport": {"width": 1366, "height": 768}},

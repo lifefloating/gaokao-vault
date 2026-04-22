@@ -12,7 +12,7 @@ async def upsert_school(conn: asyncpg.Connection, data: dict) -> int:
             content_hash, crawl_task_id)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
         ON CONFLICT (sch_id) DO UPDATE SET
-            name=EXCLUDED.name, province_id=EXCLUDED.province_id, city=EXCLUDED.city,
+            name=EXCLUDED.name, province_id=COALESCE(EXCLUDED.province_id, schools.province_id), city=EXCLUDED.city,
             authority=EXCLUDED.authority, level=EXCLUDED.level,
             is_211=EXCLUDED.is_211, is_985=EXCLUDED.is_985, is_double_first=EXCLUDED.is_double_first,
             is_private=EXCLUDED.is_private, is_independent=EXCLUDED.is_independent,
@@ -48,7 +48,7 @@ async def upsert_school(conn: asyncpg.Connection, data: dict) -> int:
 
 
 async def find_school_by_sch_id(conn: asyncpg.Connection, sch_id: int) -> dict | None:
-    row = await conn.fetchrow("SELECT id, sch_id, name FROM schools WHERE sch_id = $1", sch_id)
+    row = await conn.fetchrow("SELECT id, sch_id, name, province_id FROM schools WHERE sch_id = $1", sch_id)
     return dict(row) if row else None
 
 

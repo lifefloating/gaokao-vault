@@ -360,7 +360,10 @@ class TestParse200ExtractionPreservation:
 
             async def _collect():
                 # Mock process_item to avoid DB calls
-                with patch.object(spider, "process_item", new=AsyncMock(return_value="new")):
+                with (
+                    patch.object(spider, "_resolve_province_id", new=AsyncMock(return_value=1)),
+                    patch.object(spider, "process_item", new=AsyncMock(return_value="new")),
+                ):
                     async for item in spider.parse(response):
                         items.append(item)
 

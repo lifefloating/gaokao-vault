@@ -81,6 +81,25 @@ async def upsert_school_major(conn: asyncpg.Connection, data: dict) -> int:
     return row["id"]
 
 
+async def find_major_by_code(conn: asyncpg.Connection, code: str) -> dict | None:
+    rows = await conn.fetch("SELECT id, code, name FROM majors WHERE code = $1 ORDER BY id", code)
+    if len(rows) != 1:
+        return None
+    return dict(rows[0])
+
+
+async def find_major_by_source_id(conn: asyncpg.Connection, source_id: str) -> dict | None:
+    rows = await conn.fetch("SELECT id, source_id, code, name FROM majors WHERE source_id = $1 ORDER BY id", source_id)
+    if len(rows) != 1:
+        return None
+    return dict(rows[0])
+
+
+async def find_majors_by_name(conn: asyncpg.Connection, name: str) -> list[dict]:
+    rows = await conn.fetch("SELECT id, code, name FROM majors WHERE name = $1 ORDER BY id", name)
+    return [dict(row) for row in rows]
+
+
 async def upsert_major_satisfaction(conn: asyncpg.Connection, data: dict) -> int:
     row = await conn.fetchrow(
         """

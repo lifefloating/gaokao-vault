@@ -39,7 +39,7 @@ class MajorSpider(BaseGaokaoSpider):
 
     # Kwargs forwarded to the stealth session for every API request so the
     # browser presents a Google-search referer and waits for any JS challenge.
-    _STEALTH_KWARGS: dict = {"google_search": False, "network_idle": True}  # noqa: RUF012
+    _STEALTH_KWARGS: dict = {"google_search": False, "network_idle": False}  # noqa: RUF012
 
     async def start_requests(self):
         # Warmup: visit the SPA page to establish cookies/session
