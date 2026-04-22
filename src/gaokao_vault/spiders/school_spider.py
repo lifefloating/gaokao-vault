@@ -3,8 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any, ClassVar
-from urllib.parse import urlencode
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
 
 from scrapling.spiders import Request, Response
 
@@ -49,7 +48,8 @@ class SchoolSpider(BaseGaokaoSpider):
             self._province_map = await self._load_province_map()
 
         normalized = (
-            province_text.strip()
+            province_text
+            .strip()
             .replace("壮族自治区", "")
             .replace("回族自治区", "")
             .replace("维吾尔自治区", "")
@@ -147,16 +147,14 @@ class SchoolSpider(BaseGaokaoSpider):
 
     @staticmethod
     def _build_province_search_url(province_code: str) -> str:
-        query = urlencode(
-            {
-                "searchType": "1",
-                "ssdm": province_code,
-                "yxls": "",
-                "xlcc": "",
-                "zgsx": "",
-                "yxjbz": "",
-            }
-        )
+        query = urlencode({
+            "searchType": "1",
+            "ssdm": province_code,
+            "yxls": "",
+            "xlcc": "",
+            "zgsx": "",
+            "yxjbz": "",
+        })
         return f"{BASE_URL}/sch/search.do?{query}"
 
     async def parse_warmup(self, response):
@@ -193,6 +191,32 @@ class SchoolSpider(BaseGaokaoSpider):
                 },
             )
 
+    async def _resolve_card_province_id(
+        self,
+        school_card,
+        default_candidate_province_id: int | None,
+        sch_id: int,
+    ) -> int | None:
+        candidate_province_id = default_candidate_province_id
+        department_link = school_card.css("a.sch-department").first
+        if not department_link:
+            return candidate_province_id
+
+        department_text = " ".join(part.strip() for part in department_link.css("::text").getall() if part.strip())
+        if not department_text:
+            return candidate_province_id
+
+        try:
+            return await self._resolve_province_id(department_text)
+        except Exception:
+            logger.warning(
+                "Failed to resolve province from school list card schId=%s text=%s",
+                sch_id,
+                department_text,
+                exc_info=True,
+            )
+            return candidate_province_id
+
     async def parse_school_list(self, response: Response):
         if response.request is None:
             return
@@ -208,22 +232,11 @@ class SchoolSpider(BaseGaokaoSpider):
             if sch_id is None:
                 continue
 
-            candidate_province_id = default_candidate_province_id
-            department_link = school_card.css("a.sch-department").first
-            if department_link:
-                department_text = " ".join(
-                    part.strip() for part in department_link.css("::text").getall() if part.strip()
-                )
-                if department_text:
-                    try:
-                        candidate_province_id = await self._resolve_province_id(department_text)
-                    except Exception:
-                        logger.warning(
-                            "Failed to resolve province from school list card schId=%s text=%s",
-                            sch_id,
-                            department_text,
-                            exc_info=True,
-                        )
+            candidate_province_id = await self._resolve_card_province_id(
+                school_card,
+                default_candidate_province_id,
+                sch_id,
+            )
 
             request = self._schedule_school_detail(sch_id, candidate_province_id, priority=LIST_PAGE_PRIORITY)
             if request is not None:
@@ -342,9 +355,7 @@ class SchoolSpider(BaseGaokaoSpider):
             data["authority"] = department_texts[-1]
 
         school_type_texts = [
-            text.strip()
-            for text in response.css("div.content-introduction .yxtx span::text").getall()
-            if text.strip()
+            text.strip() for text in response.css("div.content-introduction .yxtx span::text").getall() if text.strip()
         ]
         if school_type_texts:
             data["school_type"] = " | ".join(school_type_texts)

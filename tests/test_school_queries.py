@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any, cast
 
 from gaokao_vault.db.queries.schools import upsert_school
 
@@ -21,7 +22,7 @@ def test_upsert_school_preserves_existing_province_id_when_new_value_is_null():
 
     school_id = asyncio.run(
         upsert_school(
-            conn,
+            cast(Any, conn),
             {
                 "sch_id": 1,
                 "name": "Ce Shi University",
@@ -40,7 +41,7 @@ def test_upsert_school_still_passes_non_null_province_id():
 
     asyncio.run(
         upsert_school(
-            conn,
+            cast(Any, conn),
             {
                 "sch_id": 2,
                 "name": "Second Test University",

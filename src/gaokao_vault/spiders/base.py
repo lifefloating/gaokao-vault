@@ -8,7 +8,7 @@ import asyncpg
 from scrapling.fetchers import AsyncStealthySession
 from scrapling.spiders import Request, Response, Spider
 
-from gaokao_vault.anti_detect.proxy_pool import get_proxy_rotator
+from gaokao_vault.anti_detect.proxy_pool import get_proxy_diagnostics, get_proxy_rotator
 from gaokao_vault.anti_detect.ua_pool import IMPERSONATE_LIST
 from gaokao_vault.config import AppConfig, CrawlConfig, DatabaseConfig
 from gaokao_vault.db.connection import create_local_pool
@@ -123,6 +123,24 @@ class BaseGaokaoSpider(Spider):
 
     def configure_sessions(self, manager) -> None:
         rotator = get_proxy_rotator()
+        proxy_diagnostics = get_proxy_diagnostics()
+        if proxy_diagnostics["total_count"] == 0:
+            logger.warning(
+                "Network path: direct egress via host IP (use_freeproxy=%s paid=%d free=%d total=%d)",
+                proxy_diagnostics["use_freeproxy"],
+                proxy_diagnostics["paid_count"],
+                proxy_diagnostics["free_count"],
+                proxy_diagnostics["total_count"],
+            )
+        else:
+            logger.info(
+                "Network path: rotating proxies enabled (use_freeproxy=%s paid=%d free=%d total=%d sample=%s)",
+                proxy_diagnostics["use_freeproxy"],
+                proxy_diagnostics["paid_count"],
+                proxy_diagnostics["free_count"],
+                proxy_diagnostics["total_count"],
+                proxy_diagnostics["sample_proxies"],
+            )
         manager.add(
             "http",
             AsyncStealthySession(

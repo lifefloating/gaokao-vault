@@ -73,15 +73,13 @@ class SchoolMajorSpider(BaseGaokaoSpider):
             parsed = urlparse(href)
             query = parse_qs(parsed.query)
             source_id = query.get("specId", [None])[0]
-            candidates.append(
-                {
-                    "source_id": source_id,
-                    "data_code": data_code,
-                    "href_code": href_code,
-                    "name": name,
-                    "href": href or None,
-                }
-            )
+            candidates.append({
+                "source_id": source_id,
+                "data_code": data_code,
+                "href_code": href_code,
+                "name": name,
+                "href": href or None,
+            })
         return candidates
 
     async def _resolve_major_id(

@@ -81,16 +81,16 @@ _SEARCH_HTML = """
       <div class="sch-list-container">
         <div class="sch-item">
           <a class="name" href="/sch/schoolInfo--schId-10.dhtml">北京大学</a>
-          <a class="sch-department" href="/sch/schoolInfo--schId-10.dhtml">北京|主管部门：教育部</a>
+          <a class="sch-department" href="/sch/schoolInfo--schId-10.dhtml">北京|主管部门\uff1a教育部</a>
         </div>
         <div class="sch-item">
           <a class="name" href="/sch/schoolInfo--schId-11.dhtml">河北大学</a>
-          <a class="sch-department" href="/sch/schoolInfo--schId-11.dhtml">河北|主管部门：河北省教育厅</a>
+          <a class="sch-department" href="/sch/schoolInfo--schId-11.dhtml">河北|主管部门\uff1a河北省教育厅</a>
         </div>
       </div>
       <form id="PageForm" class="pageForm">
         <ul class="ch-page clearfix">
-          <li class="lip"><a href="https://gaokao.chsi.com.cn/sch/search--ss-on,option-qg,searchType-1,start-20.dhtml">2</a></li>
+          <li class="lip"><a href="https://gaokao.chsi.com.cn/sch/search--ss-on,option-qg,searchType-1,start-20.dhtml">下一页</a></li>
         </ul>
       </form>
     </div>
@@ -106,16 +106,16 @@ _LIST_HTML = """
       <div class="sch-list-container">
         <div class="sch-item">
           <a class="name" href="/sch/schoolInfo--schId-10.dhtml">北京大学</a>
-          <a class="sch-department" href="/sch/schoolInfo--schId-10.dhtml">北京|主管部门：教育部</a>
+          <a class="sch-department" href="/sch/schoolInfo--schId-10.dhtml">北京|主管部门\uff1a教育部</a>
         </div>
         <div class="sch-item">
           <a class="name" href="/sch/schoolInfo--schId-11.dhtml">清华大学</a>
-          <a class="sch-department" href="/sch/schoolInfo--schId-11.dhtml">北京|主管部门：教育部</a>
+          <a class="sch-department" href="/sch/schoolInfo--schId-11.dhtml">北京|主管部门\uff1a教育部</a>
         </div>
       </div>
       <form id="PageForm" class="pageForm">
         <ul class="ch-page clearfix">
-          <li class="lip"><a href="https://gaokao.chsi.com.cn/sch/search--ss-on,option-qg,searchType-1,start-20.dhtml">2</a></li>
+          <li class="lip"><a href="https://gaokao.chsi.com.cn/sch/search--ss-on,option-qg,searchType-1,start-20.dhtml">下一页</a></li>
         </ul>
       </form>
     </div>
@@ -166,12 +166,8 @@ def test_parse_search_entry_yields_detail_requests_from_current_page():
 
     assert [request.meta["candidate_province_id"] for request in requests] == [1, 3]
     assert [request.meta["province_name"] for request in requests] == ["北京", "河北"]
-    assert requests[0].url == (
-        "https://gaokao.chsi.com.cn/sch/search.do?searchType=1&ssdm=11&yxls=&xlcc=&zgsx=&yxjbz="
-    )
-    assert requests[1].url == (
-        "https://gaokao.chsi.com.cn/sch/search.do?searchType=1&ssdm=13&yxls=&xlcc=&zgsx=&yxjbz="
-    )
+    assert requests[0].url == ("https://gaokao.chsi.com.cn/sch/search.do?searchType=1&ssdm=11&yxls=&xlcc=&zgsx=&yxjbz=")
+    assert requests[1].url == ("https://gaokao.chsi.com.cn/sch/search.do?searchType=1&ssdm=13&yxls=&xlcc=&zgsx=&yxjbz=")
     assert all(request.callback.__name__ == "parse_school_list" for request in requests)
     assert all(request.priority == PROVINCE_ENTRY_PRIORITY for request in requests)
 

@@ -18,6 +18,7 @@ by configure_sessions().
 from __future__ import annotations
 
 import asyncio
+import logging
 from unittest.mock import MagicMock, patch
 
 from hypothesis import HealthCheck, given, settings
@@ -233,3 +234,54 @@ class TestAntiDetectBugCondition:
         viewport = additional_args.get("viewport", {})
         assert viewport.get("width") == 1366, f"viewport width={viewport.get('width')}, expected 1366"
         assert viewport.get("height") == 768, f"viewport height={viewport.get('height')}, expected 768"
+
+    def test_configure_sessions_logs_direct_egress_when_no_proxies(self, caplog):
+        caplog.set_level(logging.INFO)
+        mock_cls, _calls = _capture_stealthy_kwargs()
+
+        with (
+            patch("gaokao_vault.spiders.base.get_proxy_rotator", return_value=None),
+            patch(
+                "gaokao_vault.spiders.base.get_proxy_diagnostics",
+                return_value={
+                    "use_freeproxy": True,
+                    "paid_count": 0,
+                    "free_count": 0,
+                    "total_count": 0,
+                    "sample_proxies": [],
+                },
+            ),
+            patch("gaokao_vault.spiders.base.AsyncStealthySession", mock_cls),
+        ):
+            spider = _make_spider()
+            manager = _FakeSessionManager()
+            spider.configure_sessions(manager)
+
+        assert "Network path: direct egress via host IP" in caplog.text
+        assert "paid=0 free=0 total=0" in caplog.text
+
+    def test_configure_sessions_logs_proxy_pool_summary(self, caplog):
+        caplog.set_level(logging.INFO)
+        mock_cls, _calls = _capture_stealthy_kwargs()
+
+        with (
+            patch("gaokao_vault.spiders.base.get_proxy_rotator", return_value=MagicMock()),
+            patch(
+                "gaokao_vault.spiders.base.get_proxy_diagnostics",
+                return_value={
+                    "use_freeproxy": True,
+                    "paid_count": 1,
+                    "free_count": 2,
+                    "total_count": 3,
+                    "sample_proxies": ["http://1.2.3.4:8080", "http://5.6.7.8:3128"],
+                },
+            ),
+            patch("gaokao_vault.spiders.base.AsyncStealthySession", mock_cls),
+        ):
+            spider = _make_spider()
+            manager = _FakeSessionManager()
+            spider.configure_sessions(manager)
+
+        assert "Network path: rotating proxies enabled" in caplog.text
+        assert "paid=1 free=2 total=3" in caplog.text
+        assert "http://1.2.3.4:8080" in caplog.text

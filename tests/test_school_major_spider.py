@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from scrapling.parser import Adaptor
@@ -66,27 +67,23 @@ async def _collect(async_gen) -> list:
 
 
 def test_find_major_by_code_returns_none_when_code_is_ambiguous():
-    conn = _FakeMajorLookupConnection(
-        [
-            {"id": 1, "code": "080901", "name": "计算机科学与技术"},
-            {"id": 2, "code": "080901", "name": "计算机科学与技术"},
-        ]
-    )
+    conn = _FakeMajorLookupConnection([
+        {"id": 1, "code": "080901", "name": "计算机科学与技术"},
+        {"id": 2, "code": "080901", "name": "计算机科学与技术"},
+    ])
 
-    result = asyncio.run(find_major_by_code(conn, "080901"))
+    result = asyncio.run(find_major_by_code(cast(Any, conn), "080901"))
 
     assert result is None
 
 
 def test_find_major_by_source_id_returns_none_when_source_id_is_ambiguous():
-    conn = _FakeMajorLookupConnection(
-        [
-            {"id": 1, "source_id": "73381091", "code": "020301", "name": "金融学"},
-            {"id": 2, "source_id": "73381091", "code": "020301", "name": "金融学"},
-        ]
-    )
+    conn = _FakeMajorLookupConnection([
+        {"id": 1, "source_id": "73381091", "code": "020301", "name": "金融学"},
+        {"id": 2, "source_id": "73381091", "code": "020301", "name": "金融学"},
+    ])
 
-    result = asyncio.run(find_major_by_source_id(conn, "73381091"))
+    result = asyncio.run(find_major_by_source_id(cast(Any, conn), "73381091"))
 
     assert result is None
 
@@ -210,7 +207,9 @@ def test_parse_resolves_by_source_id_from_professional_page():
 
     with (
         patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
-        patch("gaokao_vault.spiders.school_major_spider.find_major_by_source_id", new=AsyncMock(return_value={"id": 21})),
+        patch(
+            "gaokao_vault.spiders.school_major_spider.find_major_by_source_id", new=AsyncMock(return_value={"id": 21})
+        ),
         patch("gaokao_vault.spiders.school_major_spider.find_major_by_code", new=AsyncMock(return_value=None)),
         patch("gaokao_vault.spiders.school_major_spider.find_majors_by_name", new=AsyncMock(return_value=[])),
         patch.object(spider, "process_item", new=AsyncMock(return_value="new")),
