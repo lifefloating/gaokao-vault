@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any, ClassVar
+from urllib.parse import urlencode
 from urllib.parse import urljoin
 
 from scrapling.spiders import Request, Response
@@ -17,7 +18,11 @@ logger = logging.getLogger(__name__)
 
 MAX_SCH_ID = 5000
 SEARCH_ENTRY_URL = f"{BASE_URL}/sch/search--ss-on,option-qg,searchType-1,start-0.dhtml"
-_SCH_ID_PATTERN = re.compile(r"schoolInfoMain--schId-(\d+)")
+_SCH_ID_PATTERN = re.compile(r"schoolInfo(?:Main)?--schId-(\d+)")
+BRUTE_FORCE_PRIORITY = -10
+PROVINCE_ENTRY_PRIORITY = 5
+LIST_PAGE_PRIORITY = 10
+PAGINATION_PRIORITY = 10
 
 
 class SchoolSpider(BaseGaokaoSpider):
@@ -59,12 +64,19 @@ class SchoolSpider(BaseGaokaoSpider):
 
         return None
 
-    def _schedule_school_detail(self, sch_id: int, candidate_province_id: int | None) -> Request | None:
+    def _schedule_school_detail(
+        self,
+        sch_id: int,
+        candidate_province_id: int | None,
+        *,
+        priority: int = 0,
+    ) -> Request | None:
         if sch_id not in self._scheduled_school_candidates:
             self._scheduled_school_candidates[sch_id] = candidate_province_id
             return Request(
                 f"{BASE_URL}/sch/schoolInfoMain--schId-{sch_id}.dhtml",
                 callback=self.parse,
+                priority=priority,
                 meta={"sch_id": sch_id, "candidate_province_id": candidate_province_id},
             )
 
@@ -78,6 +90,8 @@ class SchoolSpider(BaseGaokaoSpider):
             return Request(
                 f"{BASE_URL}/sch/schoolInfoMain--schId-{sch_id}.dhtml",
                 callback=self.parse,
+                priority=priority,
+                dont_filter=True,
                 meta={"sch_id": sch_id, "candidate_province_id": candidate_province_id},
             )
 
@@ -107,7 +121,7 @@ class SchoolSpider(BaseGaokaoSpider):
         yield Request(SEARCH_ENTRY_URL, callback=self.parse_search_entry)
 
         for sch_id in range(1, MAX_SCH_ID + 1):
-            request = self._schedule_school_detail(sch_id, None)
+            request = self._schedule_school_detail(sch_id, None, priority=BRUTE_FORCE_PRIORITY)
             if request is not None:
                 yield request
 
@@ -131,6 +145,20 @@ class SchoolSpider(BaseGaokaoSpider):
 
         return urls
 
+    @staticmethod
+    def _build_province_search_url(province_code: str) -> str:
+        query = urlencode(
+            {
+                "searchType": "1",
+                "ssdm": province_code,
+                "yxls": "",
+                "xlcc": "",
+                "zgsx": "",
+                "yxjbz": "",
+            }
+        )
+        return f"{BASE_URL}/sch/search.do?{query}"
+
     async def parse_warmup(self, response):
         """Handle warmup response — just log and return."""
         logger.info("Warmup request completed: status=%s url=%s", response.status, response.url)
@@ -138,19 +166,19 @@ class SchoolSpider(BaseGaokaoSpider):
         yield  # make this an async generator to satisfy Request callback type
 
     async def parse_search_entry(self, response: Response):
-        for link in response.css("a[href*='schProvince-'][href*='searchType-1']"):
-            href = link.attrib.get("href", "").strip()
-            if not href:
+        for option in response.css("select[name='ssdm'] option"):
+            province_code = option.attrib.get("value", "").strip()
+            province_name = "".join(part.strip() for part in option.css("::text").getall() if part.strip())
+            if not province_code or not province_name or province_name == "全部":
                 continue
 
-            province_name = "".join(part.strip() for part in link.css("::text").getall() if part.strip())
             try:
                 candidate_province_id = await self._resolve_province_id(province_name)
             except Exception:
                 logger.warning("Failed to resolve province for search entry '%s'", province_name, exc_info=True)
                 candidate_province_id = None
 
-            url = urljoin(BASE_URL, href)
+            url = self._build_province_search_url(province_code)
             if url in self._visited_list_urls:
                 continue
 
@@ -158,6 +186,7 @@ class SchoolSpider(BaseGaokaoSpider):
             yield Request(
                 url,
                 callback=self.parse_school_list,
+                priority=PROVINCE_ENTRY_PRIORITY,
                 meta={
                     "candidate_province_id": candidate_province_id,
                     "province_name": province_name,
@@ -168,15 +197,35 @@ class SchoolSpider(BaseGaokaoSpider):
         if response.request is None:
             return
 
-        candidate_province_id = response.request.meta.get("candidate_province_id")
+        default_candidate_province_id = response.request.meta.get("candidate_province_id")
 
-        for link in response.css("a[href*='schoolInfoMain--schId-']"):
+        for school_card in response.css("div.sch-item"):
+            link = school_card.css("a.sch-department, .sch-title a.name, a[href*='schoolInfo--schId-']").first
+            if not link:
+                continue
             href = link.attrib.get("href", "").strip()
             sch_id = self._extract_sch_id_from_href(href)
             if sch_id is None:
                 continue
 
-            request = self._schedule_school_detail(sch_id, candidate_province_id)
+            candidate_province_id = default_candidate_province_id
+            department_link = school_card.css("a.sch-department").first
+            if department_link:
+                department_text = " ".join(
+                    part.strip() for part in department_link.css("::text").getall() if part.strip()
+                )
+                if department_text:
+                    try:
+                        candidate_province_id = await self._resolve_province_id(department_text)
+                    except Exception:
+                        logger.warning(
+                            "Failed to resolve province from school list card schId=%s text=%s",
+                            sch_id,
+                            department_text,
+                            exc_info=True,
+                        )
+
+            request = self._schedule_school_detail(sch_id, candidate_province_id, priority=LIST_PAGE_PRIORITY)
             if request is not None:
                 yield request
 
@@ -185,7 +234,12 @@ class SchoolSpider(BaseGaokaoSpider):
                 continue
 
             self._visited_list_urls.add(next_url)
-            yield Request(next_url, callback=self.parse_school_list, meta=dict(response.request.meta))
+            yield Request(
+                next_url,
+                callback=self.parse_school_list,
+                priority=PAGINATION_PRIORITY,
+                meta=dict(response.request.meta),
+            )
 
     async def parse(self, response: Response):
         if response.status == 404:
@@ -279,6 +333,22 @@ class SchoolSpider(BaseGaokaoSpider):
 
     def _extract_detail_fields(self, response: Response, data: dict) -> None:
         """Extract fields from div.content-info-item using span classes and text labels."""
+        department_texts = [
+            text.strip()
+            for text in response.css("div.content-introduction .department span::text").getall()
+            if text.strip()
+        ]
+        if department_texts:
+            data["authority"] = department_texts[-1]
+
+        school_type_texts = [
+            text.strip()
+            for text in response.css("div.content-introduction .yxtx span::text").getall()
+            if text.strip()
+        ]
+        if school_type_texts:
+            data["school_type"] = " | ".join(school_type_texts)
+
         for css_cls, field in self._SPAN_FIELD_MAP.items():
             el = response.css(f"span.{css_cls}::text")
             if el:

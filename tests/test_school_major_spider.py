@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from scrapling.parser import Adaptor
 
 from gaokao_vault.config import DatabaseConfig
-from gaokao_vault.db.queries.majors import find_major_by_code
+from gaokao_vault.db.queries.majors import find_major_by_code, find_major_by_source_id
 from gaokao_vault.spiders.school_major_spider import SchoolMajorSpider
 
 
@@ -78,6 +78,19 @@ def test_find_major_by_code_returns_none_when_code_is_ambiguous():
     assert result is None
 
 
+def test_find_major_by_source_id_returns_none_when_source_id_is_ambiguous():
+    conn = _FakeMajorLookupConnection(
+        [
+            {"id": 1, "source_id": "73381091", "code": "020301", "name": "金融学"},
+            {"id": 2, "source_id": "73381091", "code": "020301", "name": "金融学"},
+        ]
+    )
+
+    result = asyncio.run(find_major_by_source_id(conn, "73381091"))
+
+    assert result is None
+
+
 def test_parse_keeps_existing_code_match_path():
     spider = _make_school_major_spider()
     response = _make_response(
@@ -98,6 +111,7 @@ def test_parse_keeps_existing_code_match_path():
 
     with (
         patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch("gaokao_vault.spiders.school_major_spider.find_major_by_source_id", new=AsyncMock(return_value=None)),
         patch("gaokao_vault.spiders.school_major_spider.find_major_by_code", new=AsyncMock(return_value={"id": 9})),
         patch("gaokao_vault.spiders.school_major_spider.find_majors_by_name", new=AsyncMock(return_value=[])),
         patch.object(spider, "process_item", new=AsyncMock(return_value="new")),
@@ -128,6 +142,7 @@ def test_parse_falls_back_to_exact_name_when_code_is_missing():
 
     with (
         patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch("gaokao_vault.spiders.school_major_spider.find_major_by_source_id", new=AsyncMock(return_value=None)),
         patch("gaokao_vault.spiders.school_major_spider.find_major_by_code", new=AsyncMock(return_value=None)),
         patch(
             "gaokao_vault.spiders.school_major_spider.find_majors_by_name",
@@ -160,6 +175,7 @@ def test_parse_tries_href_code_when_data_code_does_not_match():
 
     with (
         patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch("gaokao_vault.spiders.school_major_spider.find_major_by_source_id", new=AsyncMock(return_value=None)),
         patch(
             "gaokao_vault.spiders.school_major_spider.find_major_by_code",
             new=AsyncMock(side_effect=[None, {"id": 15}]),
@@ -170,6 +186,38 @@ def test_parse_tries_href_code_when_data_code_does_not_match():
         items = asyncio.run(_collect(spider.parse(response)))
 
     assert items == [{"school_id": 10, "major_id": 15}]
+
+
+def test_parse_resolves_by_source_id_from_professional_page():
+    spider = _make_school_major_spider()
+    response = _make_response(
+        """
+        <html>
+          <body>
+            <div class="yxk-zyjs-tab">
+              <ul class="clearfix">
+                <li><a href="/sch/zyk/view.do?schId=73394646&specId=73381091">金融学</a></li>
+              </ul>
+            </div>
+          </body>
+        </html>
+        """,
+        "https://gaokao.chsi.com.cn/sch/listzyjs--schId-35,categoryId-417877,mindex-3.dhtml",
+        {"school_id": 11, "sch_id": 35},
+    )
+
+    fake_pool = _FakePool(AsyncMock())
+
+    with (
+        patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch("gaokao_vault.spiders.school_major_spider.find_major_by_source_id", new=AsyncMock(return_value={"id": 21})),
+        patch("gaokao_vault.spiders.school_major_spider.find_major_by_code", new=AsyncMock(return_value=None)),
+        patch("gaokao_vault.spiders.school_major_spider.find_majors_by_name", new=AsyncMock(return_value=[])),
+        patch.object(spider, "process_item", new=AsyncMock(return_value="new")),
+    ):
+        items = asyncio.run(_collect(spider.parse(response)))
+
+    assert items == [{"school_id": 11, "major_id": 21}]
 
 
 def test_parse_uses_bare_path_href_code_when_data_code_is_missing():
@@ -192,6 +240,7 @@ def test_parse_uses_bare_path_href_code_when_data_code_is_missing():
 
     with (
         patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch("gaokao_vault.spiders.school_major_spider.find_major_by_source_id", new=AsyncMock(return_value=None)),
         patch("gaokao_vault.spiders.school_major_spider.find_major_by_code", new=AsyncMock(return_value={"id": 16})),
         patch("gaokao_vault.spiders.school_major_spider.find_majors_by_name", new=AsyncMock(return_value=[])),
         patch.object(spider, "process_item", new=AsyncMock(return_value="new")),
@@ -222,6 +271,7 @@ def test_parse_skips_ambiguous_exact_name_matches(caplog):
 
     with (
         patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch("gaokao_vault.spiders.school_major_spider.find_major_by_source_id", new=AsyncMock(return_value=None)),
         patch("gaokao_vault.spiders.school_major_spider.find_major_by_code", new=AsyncMock(return_value=None)),
         patch(
             "gaokao_vault.spiders.school_major_spider.find_majors_by_name",
@@ -258,6 +308,7 @@ def test_parse_skips_name_fallback_when_policy_disables_it(caplog):
 
     with (
         patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch("gaokao_vault.spiders.school_major_spider.find_major_by_source_id", new=AsyncMock(return_value=None)),
         patch("gaokao_vault.spiders.school_major_spider.find_major_by_code", new=AsyncMock(return_value=None)),
         patch(
             "gaokao_vault.spiders.school_major_spider.find_majors_by_name",

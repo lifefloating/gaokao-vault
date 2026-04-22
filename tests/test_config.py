@@ -16,6 +16,7 @@ class TestConfig:
         config = CrawlConfig()
         assert config.concurrency == 2
         assert config.base_delay > 0
+        assert config.browser_timeout_ms == 120000
         assert 0 < config.jitter_ratio < 1
 
     def test_proxy_config_defaults(self):

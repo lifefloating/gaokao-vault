@@ -142,6 +142,7 @@ class TestAntiDetectBugCondition:
         )
         assert http_kwargs.get("block_webrtc") is True, f"block_webrtc={http_kwargs.get('block_webrtc')}, expected True"
         assert http_kwargs.get("hide_canvas") is True, f"hide_canvas={http_kwargs.get('hide_canvas')}, expected True"
+        assert http_kwargs.get("timeout") == 120000, f"timeout={http_kwargs.get('timeout')}, expected 120000"
 
     def test_412_in_blocked_status_codes(self):
         """412 must be in BLOCKED_STATUS_CODES.

@@ -56,8 +56,10 @@ class BaseGaokaoSpider(Spider):
         # Set _rs_wait_ms BEFORE super().__init__() because it calls
         # configure_sessions() which reads self._rs_wait_ms.
         self._rs_wait_ms = 10000  # default RS wait
+        self._browser_timeout_ms = 120000  # default browser navigation timeout
         if config:
             self._rs_wait_ms = config.rs_wait_ms
+            self._browser_timeout_ms = config.browser_timeout_ms
 
         super().__init__(**kwargs)
         self._db_config = db_config
@@ -129,6 +131,7 @@ class BaseGaokaoSpider(Spider):
                 block_webrtc=True,
                 hide_canvas=True,
                 network_idle=True,
+                timeout=self._browser_timeout_ms,
                 wait=self._rs_wait_ms,
                 extra_headers={"Referer": "https://gaokao.chsi.com.cn/"},
                 additional_args={"viewport": {"width": 1366, "height": 768}},
@@ -144,6 +147,7 @@ class BaseGaokaoSpider(Spider):
                 block_webrtc=True,
                 hide_canvas=True,
                 network_idle=True,
+                timeout=self._browser_timeout_ms,
                 wait=self._rs_wait_ms,
                 extra_headers={"Referer": "https://gaokao.chsi.com.cn/"},
                 additional_args={"viewport": {"width": 1366, "height": 768}},
