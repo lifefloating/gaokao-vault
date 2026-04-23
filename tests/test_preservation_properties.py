@@ -357,8 +357,9 @@ class TestPhaseOrderingPreservation:
 
         phase_calls: list[list[str]] = []
 
-        async def _mock_run_phase(task_types: list[str]) -> None:
+        async def _mock_run_phase(task_types: list[str]):
             phase_calls.append(task_types)
+            return [{"new": 1, "updated": 0, "unchanged": 0, "failed": 0}]
 
         orch._run_phase = _mock_run_phase  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
 
@@ -367,6 +368,27 @@ class TestPhaseOrderingPreservation:
         assert len(phase_calls) == 2
         assert phase_calls[0] == [t.value for t in PHASE2_TYPES]
         assert phase_calls[1] == [t.value for t in PHASE3_TYPES]
+
+    def test_run_all_skips_phase3_when_phase2_has_failures(self):
+        from gaokao_vault.scheduler.orchestrator import Orchestrator
+
+        mock_pool = MagicMock()
+        orch = Orchestrator(db_pool=mock_pool, mode="full")
+
+        phase_calls: list[list[str]] = []
+
+        async def _mock_run_phase(task_types: list[str]):
+            phase_calls.append(task_types)
+            if task_types == [t.value for t in PHASE2_TYPES]:
+                return [{"new": 1, "updated": 0, "unchanged": 0, "failed": 0}, {"failed": 1}]
+            return [{"new": 1, "updated": 0, "unchanged": 0, "failed": 0}]
+
+        orch._run_phase = _mock_run_phase  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
+
+        asyncio.run(orch.run_all())
+
+        assert len(phase_calls) == 1
+        assert phase_calls[0] == [t.value for t in PHASE2_TYPES]
 
 
 # ---------------------------------------------------------------------------

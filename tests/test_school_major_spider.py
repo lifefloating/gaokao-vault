@@ -38,6 +38,22 @@ class _FakeMajorLookupConnection:
         return self.rows
 
 
+class _FakeTaskStatusConnection:
+    def __init__(self, task_rows: dict[str, dict | None], schools: list[dict] | None = None) -> None:
+        self.task_rows = task_rows
+        self.schools = schools or []
+        self.fetch_calls: list[tuple[str, tuple[object, ...]]] = []
+
+    async def fetchrow(self, _query: str, task_type: str):
+        return self.task_rows.get(task_type)
+
+    async def fetch(self, query: str, *args: object):
+        self.fetch_calls.append((query, args))
+        if "FROM schools ORDER BY id" in query:
+            return self.schools
+        return []
+
+
 def _make_school_major_spider() -> SchoolMajorSpider:
     db_config = DatabaseConfig(
         dsn="postgresql://test:test@localhost:5432/test_db",
@@ -319,3 +335,54 @@ def test_parse_skips_name_fallback_when_policy_disables_it(caplog):
 
     assert items == []
     assert "Name fallback disabled" in caplog.text
+
+
+def test_start_requests_skips_when_schools_task_is_not_stable():
+    spider = _make_school_major_spider()
+    conn = _FakeTaskStatusConnection(
+        task_rows={
+            "schools": {"status": "failed", "failed_items": 1, "finished_at": "2026-04-23T00:00:00"},
+            "majors": {"status": "success", "failed_items": 0, "finished_at": "2026-04-23T00:00:00"},
+        },
+        schools=[{"id": 1, "sch_id": 34}],
+    )
+
+    with patch.object(spider, "_get_pool", new=AsyncMock(return_value=_FakePool(conn))):
+        requests = asyncio.run(_collect(spider.start_requests()))
+
+    assert requests == []
+    assert conn.fetch_calls == []
+
+
+def test_start_requests_skips_when_majors_task_is_not_stable():
+    spider = _make_school_major_spider()
+    conn = _FakeTaskStatusConnection(
+        task_rows={
+            "schools": {"status": "success", "failed_items": 0, "finished_at": "2026-04-23T00:00:00"},
+            "majors": {"status": "running", "failed_items": 0, "finished_at": None},
+        },
+        schools=[{"id": 1, "sch_id": 34}],
+    )
+
+    with patch.object(spider, "_get_pool", new=AsyncMock(return_value=_FakePool(conn))):
+        requests = asyncio.run(_collect(spider.start_requests()))
+
+    assert requests == []
+    assert conn.fetch_calls == []
+
+
+def test_start_requests_yields_school_requests_when_upstreams_are_stable():
+    spider = _make_school_major_spider()
+    conn = _FakeTaskStatusConnection(
+        task_rows={
+            "schools": {"status": "success", "failed_items": 0, "finished_at": "2026-04-23T00:00:00"},
+            "majors": {"status": "success", "failed_items": 0, "finished_at": "2026-04-23T00:00:00"},
+        },
+        schools=[{"id": 1, "sch_id": 34}, {"id": 2, "sch_id": 35}],
+    )
+
+    with patch.object(spider, "_get_pool", new=AsyncMock(return_value=_FakePool(conn))):
+        requests = asyncio.run(_collect(spider.start_requests()))
+
+    assert [request.meta["school_id"] for request in requests] == [1, 2]
+    assert [request.meta["sch_id"] for request in requests] == [34, 35]

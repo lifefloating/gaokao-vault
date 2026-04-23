@@ -39,6 +39,12 @@ class CrawlConfig(BaseSettings):
     heartbeat_interval: int = 120  # Heartbeat log interval in seconds
 
 
+class ScheduleConfig(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="GAOKAO_SCHEDULE__")
+
+    cron: str = "0 0 * * *"
+
+
 class OpenAIConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="OPENAI_")
 
@@ -63,6 +69,7 @@ class AppConfig(BaseSettings):
     db: DatabaseConfig = Field(default_factory=DatabaseConfig)
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     crawl: CrawlConfig = Field(default_factory=CrawlConfig)
+    schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
     s3: S3Config = Field(default_factory=S3Config)
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from gaokao_vault.config import CrawlConfig, DatabaseConfig, ProxyConfig
+from gaokao_vault.config import CrawlConfig, DatabaseConfig, ProxyConfig, ScheduleConfig
 from gaokao_vault.constants import BASE_URL, META_FIELDS, PHASE2_TYPES, PHASE3_TYPES, TaskType
 
 
@@ -22,6 +22,10 @@ class TestConfig:
     def test_proxy_config_defaults(self):
         config = ProxyConfig()
         assert isinstance(config.static_proxies, (list, tuple))
+
+    def test_schedule_config_defaults(self):
+        config = ScheduleConfig()
+        assert config.cron == "0 0 * * *"
 
 
 class TestConstants:

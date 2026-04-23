@@ -80,14 +80,22 @@ class Orchestrator:
 
         logger.info("=== Phase 2: Core entities ===")
         p2_results = await self._run_phase([t.value for t in PHASE2_TYPES])
-        if p2_results is not None:
-            failed = sum(
-                1 for r in p2_results if isinstance(r, Exception) or (isinstance(r, dict) and r.get("failed", 0) > 0)
-            )
-            if failed:
-                logger.warning(
-                    "Phase 2: %d/%d spiders had failures — Phase 3 data may be incomplete", failed, len(p2_results)
+        if not self._phase_results_are_stable(p2_results):
+            failed = (
+                0
+                if p2_results is None
+                else sum(
+                    1
+                    for r in p2_results
+                    if isinstance(r, Exception) or (isinstance(r, dict) and r.get("failed", 0) > 0)
                 )
+            )
+            logger.warning(
+                "Skipping Phase 3 because Phase 2 is not stable (failed=%d total=%s)",
+                failed,
+                0 if p2_results is None else len(p2_results),
+            )
+            return
 
         logger.info("=== Phase 3: Associations ===")
         await self._run_phase([t.value for t in PHASE3_TYPES])
@@ -173,6 +181,12 @@ class Orchestrator:
                 )
             if other_errors:
                 raise other_errors from None
+
+    @staticmethod
+    def _phase_results_are_stable(results: list | None) -> bool:
+        if results is None:
+            return False
+        return all(not isinstance(result, Exception) and result.get("failed", 0) == 0 for result in results)
 
     async def _run_phase(self, task_types: list[str]) -> list | None:
         valid_types = [t for t in task_types if t in SPIDER_MAP]

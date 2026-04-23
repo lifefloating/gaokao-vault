@@ -179,5 +179,24 @@ def healthcheck() -> None:
         raise typer.Exit(code=1)
 
 
+@app.command()
+def schedule(
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Run the cron scheduler for incremental crawls."""
+    from gaokao_vault.config import AppConfig
+
+    config = AppConfig()
+    _setup_logging(verbose, log_dir=config.crawl.log_dir)
+
+    async def _run():
+        from gaokao_vault.scheduler.cron_runner import IncrementalCronScheduler
+
+        scheduler = IncrementalCronScheduler(config)
+        await scheduler.run_forever()
+
+    asyncio.run(_run())
+
+
 if __name__ == "__main__":
     app()

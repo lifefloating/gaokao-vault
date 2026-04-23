@@ -32,13 +32,17 @@ class SchoolMajorSpider(BaseGaokaoSpider):
         super().__init__(*args, **kwargs)
         self._allow_name_fallback = False
 
-    async def _load_name_fallback_policy(self) -> bool:
+    async def _load_latest_task_status(self, task_type: str) -> dict | None:
         async with (await self._get_pool()).acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT status, failed_items FROM crawl_tasks WHERE task_type = $1 ORDER BY id DESC LIMIT 1",
-                TaskType.MAJORS,
+                "SELECT status, failed_items, finished_at FROM crawl_tasks WHERE task_type = $1 ORDER BY id DESC LIMIT 1",
+                task_type,
             )
-        return bool(row and row["status"] == "success" and row["failed_items"] == 0)
+        return dict(row) if row else None
+
+    async def _is_task_stable(self, task_type: str) -> bool:
+        row = await self._load_latest_task_status(task_type)
+        return bool(row and row["status"] == "success" and row["failed_items"] == 0 and row["finished_at"] is not None)
 
     @staticmethod
     def _extract_code_from_href(href: str) -> str | None:
@@ -145,10 +149,21 @@ class SchoolMajorSpider(BaseGaokaoSpider):
 
     async def start_requests(self):
         try:
-            self._allow_name_fallback = await self._load_name_fallback_policy()
+            schools_stable = await self._is_task_stable(TaskType.SCHOOLS)
+            majors_stable = await self._is_task_stable(TaskType.MAJORS)
         except Exception:
-            logger.warning("Failed to load name fallback policy for school majors", exc_info=True)
-            self._allow_name_fallback = False
+            logger.warning("Failed to verify upstream task stability for school majors", exc_info=True)
+            return
+
+        if not schools_stable or not majors_stable:
+            logger.warning(
+                "Skipping school_majors crawl because upstream tasks are not stable (schools=%s majors=%s)",
+                schools_stable,
+                majors_stable,
+            )
+            return
+
+        self._allow_name_fallback = majors_stable
 
         async with (await self._get_pool()).acquire() as conn:
             rows = await conn.fetch("SELECT id, sch_id FROM schools ORDER BY id")
