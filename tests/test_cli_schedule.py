@@ -39,3 +39,27 @@ class TestScheduleCommandExecution:
         mock_config_cls.assert_called_once()
         mock_scheduler_cls.assert_called_once_with(config)
         scheduler.run_forever.assert_awaited_once()
+
+    @patch("gaokao_vault.cli._setup_logging")
+    @patch("gaokao_vault.scheduler.cron_runner.IncrementalCronScheduler")
+    @patch("gaokao_vault.config.AppConfig")
+    def test_schedule_command_verbose_flag_configures_logging(
+        self,
+        mock_config_cls,
+        mock_scheduler_cls,
+        mock_setup_logging,
+    ) -> None:
+        config = MagicMock()
+        config.crawl.log_dir = None
+        scheduler = MagicMock()
+        scheduler.run_forever = AsyncMock()
+        mock_config_cls.return_value = config
+        mock_scheduler_cls.return_value = scheduler
+
+        result = runner.invoke(app, ["schedule", "--verbose"])
+
+        assert result.exit_code == 0
+        mock_setup_logging.assert_called_once()
+        args, kwargs = mock_setup_logging.call_args
+        assert args[0] is True
+        assert kwargs.get("log_dir") is None

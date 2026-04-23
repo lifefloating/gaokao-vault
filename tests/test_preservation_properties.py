@@ -390,6 +390,15 @@ class TestPhaseOrderingPreservation:
         assert len(phase_calls) == 1
         assert phase_calls[0] == [t.value for t in PHASE2_TYPES]
 
+    def test_phase_summary_treats_non_dict_results_as_unstable(self):
+        from gaokao_vault.scheduler.orchestrator import Orchestrator
+
+        stable, failed, total = Orchestrator._phase_summary([{"failed": 0}, None, RuntimeError("boom")])
+
+        assert stable is False
+        assert failed == 2
+        assert total == 3
+
 
 # ---------------------------------------------------------------------------
 # Property 2d: Spider Exception Handling
