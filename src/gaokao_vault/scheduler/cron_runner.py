@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from time import monotonic
-from typing import Callable
 from zoneinfo import ZoneInfo
 
 from gaokao_vault.config import AppConfig
