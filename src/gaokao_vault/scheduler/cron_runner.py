@@ -243,10 +243,7 @@ def _parse_value(
     names: dict[str, int] | None = None,
 ) -> int:
     token = value.strip().upper()
-    if names is not None and token in names:
-        parsed = names[token]
-    else:
-        parsed = int(token)
+    parsed = names[token] if names is not None and token in names else int(token)
 
     if parsed < min_value or parsed > max_value:
         msg = f"Cron value '{value}' is outside {min_value}-{max_value}."

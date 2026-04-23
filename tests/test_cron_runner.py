@@ -4,6 +4,8 @@ import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from gaokao_vault.config import AppConfig
 from gaokao_vault.scheduler.cron_runner import CronExpression, IncrementalCronScheduler
 
@@ -22,12 +24,8 @@ def test_cron_expression_supports_steps_and_lists() -> None:
 
 
 def test_cron_expression_rejects_invalid_field_count() -> None:
-    try:
+    with pytest.raises(ValueError, match="Expected 5 fields"):
         CronExpression.parse("0 14 * *")
-    except ValueError as exc:
-        assert "Expected 5 fields" in str(exc)
-    else:
-        raise AssertionError("CronExpression.parse() must reject non-5-field expressions")
 
 
 def test_scheduler_skips_trigger_when_previous_run_is_active() -> None:
