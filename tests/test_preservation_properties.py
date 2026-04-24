@@ -14,6 +14,7 @@ import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from conftest import make_mock_pool_and_conn
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -52,18 +53,7 @@ optional_error_st = st.one_of(st.none(), st.text(min_size=1, max_size=100))
 
 def _make_mock_pool_and_conn() -> tuple[MagicMock, AsyncMock]:
     """Return (pool, conn) mocks wired so pool.acquire() yields conn."""
-    pool = MagicMock()
-    conn = AsyncMock()
-
-    transaction_context = AsyncMock()
-    transaction_context.__aenter__ = AsyncMock(return_value=None)
-    transaction_context.__aexit__ = AsyncMock(return_value=False)
-    conn.transaction = MagicMock(return_value=transaction_context)
-
-    acm = AsyncMock()
-    acm.__aenter__ = AsyncMock(return_value=conn)
-    acm.__aexit__ = AsyncMock(return_value=False)
-    pool.acquire.return_value = acm
+    pool, conn, _ = make_mock_pool_and_conn()
     return pool, conn
 
 

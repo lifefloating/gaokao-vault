@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import asyncpg
 
 from gaokao_vault.db.queries.crawl_meta import find_latest_hash, insert_snapshot
+
+UpsertFn = Callable[[asyncpg.Connection, dict[str, Any]], Awaitable[int]]
 
 TABLE_MAP: dict[str, tuple[str, str, list[str]]] = {
     "schools": ("schools", "sch_id = $1", ["sch_id"]),
@@ -59,7 +62,7 @@ async def deduplicate_and_persist(
     content_hash: str,
     unique_keys: dict[str, Any],
     crawl_task_id: int,
-    upsert_fn=None,
+    upsert_fn: UpsertFn | None = None,
 ) -> str:
     mapping = TABLE_MAP.get(entity_type)
     if mapping is None and upsert_fn is None:
@@ -105,7 +108,7 @@ async def deduplicate_and_persist(
         return "updated"
 
 
-async def _persist_new(conn: asyncpg.Connection, item: dict[str, Any], upsert_fn) -> int | None:
+async def _persist_new(conn: asyncpg.Connection, item: dict[str, Any], upsert_fn: UpsertFn | None) -> int | None:
     if upsert_fn is None:
         return None
     return await upsert_fn(conn, item)
@@ -115,7 +118,7 @@ async def _persist_updated(
     conn: asyncpg.Connection,
     item: dict[str, Any],
     existing_id: int,
-    upsert_fn,
+    upsert_fn: UpsertFn | None,
 ) -> int | None:
     if upsert_fn is None:
         return existing_id
