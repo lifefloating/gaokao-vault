@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from scrapling.parser import Adaptor
