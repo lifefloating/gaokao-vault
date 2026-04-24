@@ -2,10 +2,25 @@
 
 from __future__ import annotations
 
+import asyncio
+from unittest.mock import AsyncMock, MagicMock
+
 from gaokao_vault.models.school import SchoolItem
 from gaokao_vault.models.score import ScoreLineItem
+from gaokao_vault.pipeline.dedup import deduplicate_and_persist
 from gaokao_vault.pipeline.hasher import compute_content_hash
 from gaokao_vault.pipeline.validator import validate_item
+
+
+def _make_mock_pool_and_conn() -> tuple[MagicMock, AsyncMock]:
+    pool = MagicMock()
+    conn = AsyncMock()
+
+    acquire_context = AsyncMock()
+    acquire_context.__aenter__ = AsyncMock(return_value=conn)
+    acquire_context.__aexit__ = AsyncMock(return_value=False)
+    pool.acquire.return_value = acquire_context
+    return pool, conn
 
 
 class TestContentHash:
@@ -72,3 +87,63 @@ class TestValidator:
         assert result["is_985"] is False
         assert result["is_double_first"] is False
         assert result["province_id"] is None
+
+
+class TestDedupPersistence:
+    def test_persists_within_transaction(self):
+        pool, conn = _make_mock_pool_and_conn()
+
+        transaction_context = AsyncMock()
+        transaction_context.__aenter__ = AsyncMock(return_value=None)
+        transaction_context.__aexit__ = AsyncMock(return_value=False)
+        conn.transaction = MagicMock(return_value=transaction_context)
+
+        async def fetchrow_side_effect(query, *args):
+            if "SELECT id, content_hash" in query:
+                return None
+            if "crawl_snapshots" in query:
+                return {"id": 1}
+            return None
+
+        conn.fetchrow.side_effect = fetchrow_side_effect
+        upsert_fn = AsyncMock(return_value=123)
+
+        result = asyncio.run(
+            deduplicate_and_persist(
+                db_pool=pool,
+                entity_type="schools",
+                item={"sch_id": 1, "name": "Test"},
+                content_hash="abc",
+                unique_keys={"sch_id": 1},
+                crawl_task_id=1,
+                upsert_fn=upsert_fn,
+            )
+        )
+
+        assert result == "new"
+        conn.transaction.assert_called_once_with()
+        transaction_context.__aenter__.assert_awaited_once_with()
+        transaction_context.__aexit__.assert_awaited_once()
+
+    def test_rejects_upsert_returning_invalid_entity_id(self):
+        pool, conn = _make_mock_pool_and_conn()
+
+        transaction_context = AsyncMock()
+        transaction_context.__aenter__ = AsyncMock(return_value=None)
+        transaction_context.__aexit__ = AsyncMock(return_value=False)
+        conn.transaction = MagicMock(return_value=transaction_context)
+        conn.fetchrow.return_value = None
+
+        result = asyncio.run(
+            deduplicate_and_persist(
+                db_pool=pool,
+                entity_type="schools",
+                item={"sch_id": 1, "name": "Test"},
+                content_hash="abc",
+                unique_keys={"sch_id": 1},
+                crawl_task_id=1,
+                upsert_fn=AsyncMock(return_value=0),
+            )
+        )
+
+        assert result == "failed"

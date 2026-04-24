@@ -28,8 +28,10 @@ TABLE_MAP: dict[str, tuple[str, str, list[str]]] = {
     ),
     "enrollment_plans": (
         "enrollment_plans",
-        "school_id = $1 AND province_id = $2 AND year = $3 AND major_name = $4",
-        ["school_id", "province_id", "year", "major_name"],
+        "school_id = $1 AND province_id = $2 AND year = $3 "
+        "AND subject_category_id IS NOT DISTINCT FROM $4 "
+        "AND batch IS NOT DISTINCT FROM $5 AND major_name IS NOT DISTINCT FROM $6",
+        ["school_id", "province_id", "year", "subject_category_id", "batch", "major_name"],
     ),
     "major_admission_results": (
         "major_admission_results",
@@ -39,12 +41,12 @@ TABLE_MAP: dict[str, tuple[str, str, list[str]]] = {
     ),
     "special_enrollments": (
         "special_enrollments",
-        "enrollment_type = $1 AND school_id = $2 AND year = $3",
-        ["enrollment_type", "school_id", "year"],
+        "enrollment_type = $1 AND school_id IS NOT DISTINCT FROM $2 AND year = $3 AND title IS NOT DISTINCT FROM $4",
+        ["enrollment_type", "school_id", "year", "title"],
     ),
     "major_interpretations": (
         "major_interpretations",
-        "major_id = $1 AND title = $2",
+        "major_id IS NOT DISTINCT FROM $1 AND title IS NOT DISTINCT FROM $2",
         ["major_id", "title"],
     ),
 }
@@ -63,7 +65,7 @@ async def deduplicate_and_persist(
     if mapping is None and upsert_fn is None:
         return "failed"
 
-    async with db_pool.acquire() as conn:
+    async with db_pool.acquire() as conn, conn.transaction():
         if mapping:
             table, clause, key_fields = mapping
             params = [unique_keys[k] for k in key_fields]
@@ -75,12 +77,8 @@ async def deduplicate_and_persist(
         item["crawl_task_id"] = crawl_task_id
 
         if existing_id is None:
-            if upsert_fn:
-                entity_id = await upsert_fn(conn, item)
-            elif mapping:
-                # No upsert_fn and no existing record — cannot insert without upsert_fn
-                return "failed"
-            else:
+            entity_id = await _persist_new(conn, item, upsert_fn)
+            if not entity_id:
                 return "failed"
             await insert_snapshot(conn, crawl_task_id, entity_type, entity_id, content_hash, "new")
             return "new"
@@ -89,16 +87,10 @@ async def deduplicate_and_persist(
             await insert_snapshot(conn, crawl_task_id, entity_type, existing_id, content_hash, "unchanged")
             return "unchanged"
 
-        old_data = None
-        if mapping:
-            row = await conn.fetchrow(f"SELECT * FROM {mapping[0]} WHERE id = $1", existing_id)  # noqa: S608
-            if row:
-                old_data = dict(row)
-
-        if upsert_fn:
-            entity_id = await upsert_fn(conn, item)
-        else:
-            entity_id = existing_id
+        old_data = await _fetch_existing_row(conn, mapping, existing_id)
+        entity_id = await _persist_updated(conn, item, existing_id, upsert_fn)
+        if not entity_id:
+            return "failed"
 
         await insert_snapshot(
             conn,
@@ -111,6 +103,34 @@ async def deduplicate_and_persist(
             snapshot_data=_serialize_snapshot(old_data),
         )
         return "updated"
+
+
+async def _persist_new(conn: asyncpg.Connection, item: dict[str, Any], upsert_fn) -> int | None:
+    if upsert_fn is None:
+        return None
+    return await upsert_fn(conn, item)
+
+
+async def _persist_updated(
+    conn: asyncpg.Connection,
+    item: dict[str, Any],
+    existing_id: int,
+    upsert_fn,
+) -> int | None:
+    if upsert_fn is None:
+        return existing_id
+    return await upsert_fn(conn, item)
+
+
+async def _fetch_existing_row(
+    conn: asyncpg.Connection,
+    mapping: tuple[str, str, list[str]] | None,
+    existing_id: int,
+) -> dict | None:
+    if mapping is None:
+        return None
+    row = await conn.fetchrow(f"SELECT * FROM {mapping[0]} WHERE id = $1", existing_id)  # noqa: S608
+    return dict(row) if row else None
 
 
 def _serialize_snapshot(data: dict | None) -> dict | None:

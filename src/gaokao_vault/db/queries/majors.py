@@ -127,7 +127,13 @@ async def upsert_major_interpretation(conn: asyncpg.Connection, data: dict) -> i
         INSERT INTO major_interpretations (major_id, title, content, author, publish_date,
             source_url, content_hash, crawl_task_id)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (major_id, title) DO UPDATE SET
+            content=EXCLUDED.content,
+            author=EXCLUDED.author,
+            publish_date=EXCLUDED.publish_date,
+            source_url=EXCLUDED.source_url,
+            content_hash=EXCLUDED.content_hash,
+            crawl_task_id=EXCLUDED.crawl_task_id
         RETURNING id
         """,
         data.get("major_id"),
@@ -139,4 +145,4 @@ async def upsert_major_interpretation(conn: asyncpg.Connection, data: dict) -> i
         data.get("content_hash"),
         data.get("crawl_task_id"),
     )
-    return row["id"] if row else 0
+    return row["id"]

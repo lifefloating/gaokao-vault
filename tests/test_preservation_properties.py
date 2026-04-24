@@ -55,6 +55,11 @@ def _make_mock_pool_and_conn() -> tuple[MagicMock, AsyncMock]:
     pool = MagicMock()
     conn = AsyncMock()
 
+    transaction_context = AsyncMock()
+    transaction_context.__aenter__ = AsyncMock(return_value=None)
+    transaction_context.__aexit__ = AsyncMock(return_value=False)
+    conn.transaction = MagicMock(return_value=transaction_context)
+
     acm = AsyncMock()
     acm.__aenter__ = AsyncMock(return_value=conn)
     acm.__aexit__ = AsyncMock(return_value=False)
