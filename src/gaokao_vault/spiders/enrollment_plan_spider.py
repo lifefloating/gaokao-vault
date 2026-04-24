@@ -114,6 +114,8 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
                             "school_id": school_id,
                             "province_id": province_id,
                             "year": year,
+                            "subject_category_id": subject_category_id,
+                            "batch": batch,
                             "major_name": major_name,
                         },
                         upsert_fn=upsert_enrollment_plan,

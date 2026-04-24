@@ -94,6 +94,7 @@ class SpecialSpider(BaseGaokaoSpider):
                         entity_type="special_enrollments",
                         unique_keys={
                             "enrollment_type": etype,
+                            "school_id": None,
                             "year": year,
                             "title": title,
                         },
@@ -125,6 +126,7 @@ class SpecialSpider(BaseGaokaoSpider):
                 entity_type="special_enrollments",
                 unique_keys={
                     "enrollment_type": data.get("enrollment_type"),
+                    "school_id": data.get("school_id"),
                     "year": data.get("year"),
                     "title": data.get("title", ""),
                 },

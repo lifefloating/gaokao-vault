@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+from unittest.mock import AsyncMock
+
+from conftest import make_mock_pool_and_conn
+
 from gaokao_vault.models.school import SchoolItem
 from gaokao_vault.models.score import ScoreLineItem
+from gaokao_vault.pipeline.dedup import deduplicate_and_persist
 from gaokao_vault.pipeline.hasher import compute_content_hash
 from gaokao_vault.pipeline.validator import validate_item
 
@@ -72,3 +78,45 @@ class TestValidator:
         assert result["is_985"] is False
         assert result["is_double_first"] is False
         assert result["province_id"] is None
+
+
+class TestDedupPersistence:
+    def test_persists_within_transaction(self):
+        pool, conn, transaction_context = make_mock_pool_and_conn()
+        conn.fetchrow.side_effect = [None, {"id": 1}]
+        upsert_fn = AsyncMock(return_value=123)
+
+        result = asyncio.run(
+            deduplicate_and_persist(
+                db_pool=pool,
+                entity_type="schools",
+                item={"sch_id": 1, "name": "Test"},
+                content_hash="abc",
+                unique_keys={"sch_id": 1},
+                crawl_task_id=1,
+                upsert_fn=upsert_fn,
+            )
+        )
+
+        assert result == "new"
+        conn.transaction.assert_called_once_with()
+        transaction_context.__aenter__.assert_awaited_once_with()
+        transaction_context.__aexit__.assert_awaited_once()
+
+    def test_rejects_upsert_returning_invalid_entity_id(self):
+        pool, conn, _ = make_mock_pool_and_conn()
+        conn.fetchrow.return_value = None
+
+        result = asyncio.run(
+            deduplicate_and_persist(
+                db_pool=pool,
+                entity_type="schools",
+                item={"sch_id": 1, "name": "Test"},
+                content_hash="abc",
+                unique_keys={"sch_id": 1},
+                crawl_task_id=1,
+                upsert_fn=AsyncMock(return_value=0),
+            )
+        )
+
+        assert result == "failed"
