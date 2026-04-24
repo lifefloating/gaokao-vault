@@ -52,6 +52,14 @@ async def find_school_by_sch_id(conn: asyncpg.Connection, sch_id: int) -> dict |
     return dict(row) if row else None
 
 
+async def find_schools_by_city(conn: asyncpg.Connection, city: str) -> list[dict]:
+    rows = await conn.fetch(
+        "SELECT id, sch_id, name, city FROM schools WHERE city = $1 ORDER BY id",
+        city,
+    )
+    return [dict(row) for row in rows]
+
+
 async def upsert_school_satisfaction(conn: asyncpg.Connection, data: dict) -> int:
     row = await conn.fetchrow(
         """

@@ -40,10 +40,10 @@ class TestConstants:
     def test_task_types_enum(self):
         assert TaskType.SCHOOLS.value == "schools"
         assert TaskType.MAJORS.value == "majors"
-        assert len(TaskType) == 13
+        assert len(TaskType) == 14
 
     def test_phase_types(self):
         assert len(PHASE2_TYPES) == 4
-        assert len(PHASE3_TYPES) == 8
+        assert len(PHASE3_TYPES) == 9
         assert TaskType.SCHOOLS in PHASE2_TYPES
         assert TaskType.SCHOOL_MAJORS in PHASE3_TYPES

@@ -53,3 +53,29 @@ async def batch_upsert_score_segments(conn: asyncpg.Connection, rows: list[dict]
         )
         count += 1
     return count
+
+
+async def find_score_segment_rank(
+    conn: asyncpg.Connection,
+    province_id: int,
+    year: int,
+    subject_category_id: int | None,
+    score: int,
+) -> dict | None:
+    row = await conn.fetchrow(
+        """
+        SELECT score, cumulative_count
+        FROM score_segments
+        WHERE province_id = $1
+          AND year = $2
+          AND subject_category_id IS NOT DISTINCT FROM $3
+          AND score <= $4
+        ORDER BY score DESC
+        LIMIT 1
+        """,
+        province_id,
+        year,
+        subject_category_id,
+        score,
+    )
+    return dict(row) if row else None

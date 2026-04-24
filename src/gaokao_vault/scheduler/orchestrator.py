@@ -13,6 +13,7 @@ from gaokao_vault.spiders.base import BaseGaokaoSpider
 from gaokao_vault.spiders.charter_spider import CharterSpider
 from gaokao_vault.spiders.enrollment_plan_spider import EnrollmentPlanSpider
 from gaokao_vault.spiders.interpretation_spider import InterpretationSpider
+from gaokao_vault.spiders.major_admission_result_spider import MajorAdmissionResultSpider
 from gaokao_vault.spiders.major_satisfaction_spider import MajorSatisfactionSpider
 from gaokao_vault.spiders.major_spider import MajorSpider
 from gaokao_vault.spiders.school_major_spider import SchoolMajorSpider
@@ -44,6 +45,7 @@ SPIDER_MAP: dict[str, type[BaseGaokaoSpider]] = {
     TaskType.SCHOOL_MAJORS: SchoolMajorSpider,
     TaskType.SCORE_SEGMENTS: ScoreSegmentSpider,
     TaskType.ENROLLMENT_PLANS: EnrollmentPlanSpider,
+    TaskType.MAJOR_ADMISSION_RESULTS: MajorAdmissionResultSpider,
     TaskType.CHARTERS: CharterSpider,
     TaskType.SPECIAL: SpecialSpider,
     TaskType.SCHOOL_SATISFACTION: SchoolSatisfactionSpider,

@@ -336,6 +336,7 @@ class TestPhaseOrderingPreservation:
             TaskType.SCHOOL_MAJORS,
             TaskType.SCORE_SEGMENTS,
             TaskType.ENROLLMENT_PLANS,
+            TaskType.MAJOR_ADMISSION_RESULTS,
             TaskType.CHARTERS,
             TaskType.SPECIAL,
             TaskType.SCHOOL_SATISFACTION,
