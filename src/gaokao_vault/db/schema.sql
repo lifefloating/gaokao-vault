@@ -311,6 +311,42 @@ DROP TRIGGER IF EXISTS update_enrollment_plans_updated_at ON enrollment_plans;
 CREATE TRIGGER update_enrollment_plans_updated_at BEFORE UPDATE ON enrollment_plans
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TABLE IF NOT EXISTS major_admission_results (
+    id              BIGSERIAL PRIMARY KEY,
+    school_id       BIGINT NOT NULL REFERENCES schools(id),
+    major_id        BIGINT NOT NULL REFERENCES majors(id),
+    province_id     INTEGER NOT NULL REFERENCES provinces(id),
+    year            SMALLINT NOT NULL,
+    subject_category_id INTEGER REFERENCES subject_categories(id),
+    batch           VARCHAR(50) NOT NULL,
+    min_score       INTEGER,
+    min_rank        INTEGER,
+    avg_score       INTEGER,
+    avg_rank        INTEGER,
+    max_score       INTEGER,
+    max_rank        INTEGER,
+    admitted_count  INTEGER,
+    major_name_raw  VARCHAR(100),
+    subject_category_raw VARCHAR(50),
+    batch_raw       VARCHAR(50),
+    remark          VARCHAR(500),
+    source_url      VARCHAR(255),
+    content_hash    VARCHAR(64),
+    crawl_task_id   BIGINT REFERENCES crawl_tasks(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE NULLS NOT DISTINCT (school_id, major_id, province_id, year, subject_category_id, batch)
+);
+
+CREATE INDEX IF NOT EXISTS idx_major_admission_school_province_year
+    ON major_admission_results(school_id, province_id, year);
+CREATE INDEX IF NOT EXISTS idx_major_admission_major
+    ON major_admission_results(major_id);
+
+DROP TRIGGER IF EXISTS update_major_admission_results_updated_at ON major_admission_results;
+CREATE TRIGGER update_major_admission_results_updated_at BEFORE UPDATE ON major_admission_results
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TABLE IF NOT EXISTS admission_charters (
     id              BIGSERIAL PRIMARY KEY,
     school_id       BIGINT NOT NULL REFERENCES schools(id),

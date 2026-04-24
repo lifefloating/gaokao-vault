@@ -39,6 +39,9 @@ docker compose run --rm crawler init-db
 # 全量抓取
 docker compose run --rm crawler crawl --mode full
 
+# 启动常驻定时调度（默认北京时间每天 00:00 增量抓取）
+docker compose up -d scheduler
+
 # 查看任务状态
 docker compose run --rm crawler status
 
@@ -51,6 +54,9 @@ docker compose down
 ```bash
 # 增量抓取
 docker compose run --rm crawler crawl --mode incremental
+
+# 常驻调度容器（读取 GAOKAO_SCHEDULE__CRON）
+docker compose up -d scheduler
 
 # 指定类型
 docker compose run --rm crawler crawl --types schools majors
@@ -101,6 +107,9 @@ GAOKAO_PROXY__USE_FREEPROXY=false
 # 爬取参数
 GAOKAO_CRAWL__CONCURRENCY=5
 GAOKAO_CRAWL__BASE_DELAY=1.0
+
+# 定时调度（固定按北京时间解析，默认每天 00:00）
+GAOKAO_SCHEDULE__CRON="0 0 * * *"
 ```
 
 ### 使用

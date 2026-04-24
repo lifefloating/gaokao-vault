@@ -31,6 +31,12 @@ TABLE_MAP: dict[str, tuple[str, str, list[str]]] = {
         "school_id = $1 AND province_id = $2 AND year = $3 AND major_name = $4",
         ["school_id", "province_id", "year", "major_name"],
     ),
+    "major_admission_results": (
+        "major_admission_results",
+        "school_id = $1 AND major_id = $2 AND province_id = $3 AND year = $4 "
+        "AND subject_category_id IS NOT DISTINCT FROM $5 AND batch = $6",
+        ["school_id", "major_id", "province_id", "year", "subject_category_id", "batch"],
+    ),
     "special_enrollments": (
         "special_enrollments",
         "enrollment_type = $1 AND school_id = $2 AND year = $3",

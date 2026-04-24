@@ -13,6 +13,7 @@ from gaokao_vault.spiders.base import BaseGaokaoSpider
 from gaokao_vault.spiders.charter_spider import CharterSpider
 from gaokao_vault.spiders.enrollment_plan_spider import EnrollmentPlanSpider
 from gaokao_vault.spiders.interpretation_spider import InterpretationSpider
+from gaokao_vault.spiders.major_admission_result_spider import MajorAdmissionResultSpider
 from gaokao_vault.spiders.major_satisfaction_spider import MajorSatisfactionSpider
 from gaokao_vault.spiders.major_spider import MajorSpider
 from gaokao_vault.spiders.school_major_spider import SchoolMajorSpider
@@ -44,6 +45,7 @@ SPIDER_MAP: dict[str, type[BaseGaokaoSpider]] = {
     TaskType.SCHOOL_MAJORS: SchoolMajorSpider,
     TaskType.SCORE_SEGMENTS: ScoreSegmentSpider,
     TaskType.ENROLLMENT_PLANS: EnrollmentPlanSpider,
+    TaskType.MAJOR_ADMISSION_RESULTS: MajorAdmissionResultSpider,
     TaskType.CHARTERS: CharterSpider,
     TaskType.SPECIAL: SpecialSpider,
     TaskType.SCHOOL_SATISFACTION: SchoolSatisfactionSpider,
@@ -80,14 +82,14 @@ class Orchestrator:
 
         logger.info("=== Phase 2: Core entities ===")
         p2_results = await self._run_phase([t.value for t in PHASE2_TYPES])
-        if p2_results is not None:
-            failed = sum(
-                1 for r in p2_results if isinstance(r, Exception) or (isinstance(r, dict) and r.get("failed", 0) > 0)
+        stable, failed, total = self._phase_summary(p2_results)
+        if not stable:
+            logger.warning(
+                "Skipping Phase 3 because Phase 2 is not stable (failed=%d total=%d)",
+                failed,
+                total,
             )
-            if failed:
-                logger.warning(
-                    "Phase 2: %d/%d spiders had failures — Phase 3 data may be incomplete", failed, len(p2_results)
-                )
+            return
 
         logger.info("=== Phase 3: Associations ===")
         await self._run_phase([t.value for t in PHASE3_TYPES])
@@ -173,6 +175,18 @@ class Orchestrator:
                 )
             if other_errors:
                 raise other_errors from None
+
+    @staticmethod
+    def _phase_summary(results: list | None) -> tuple[bool, int, int]:
+        if results is None:
+            return False, 0, 0
+
+        failed = sum(
+            1
+            for result in results
+            if isinstance(result, Exception) or not isinstance(result, dict) or result.get("failed", 0) > 0
+        )
+        return failed == 0, failed, len(results)
 
     async def _run_phase(self, task_types: list[str]) -> list | None:
         valid_types = [t for t in task_types if t in SPIDER_MAP]

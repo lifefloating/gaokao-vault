@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from gaokao_vault.config import CrawlConfig, DatabaseConfig, ProxyConfig
+from gaokao_vault.config import CrawlConfig, DatabaseConfig, ProxyConfig, ScheduleConfig
 from gaokao_vault.constants import BASE_URL, META_FIELDS, PHASE2_TYPES, PHASE3_TYPES, TaskType
 
 
@@ -23,6 +23,10 @@ class TestConfig:
         config = ProxyConfig()
         assert isinstance(config.static_proxies, (list, tuple))
 
+    def test_schedule_config_defaults(self):
+        config = ScheduleConfig()
+        assert config.cron == "0 0 * * *"
+
 
 class TestConstants:
     def test_base_url(self):
@@ -36,10 +40,10 @@ class TestConstants:
     def test_task_types_enum(self):
         assert TaskType.SCHOOLS.value == "schools"
         assert TaskType.MAJORS.value == "majors"
-        assert len(TaskType) == 13
+        assert len(TaskType) == 14
 
     def test_phase_types(self):
         assert len(PHASE2_TYPES) == 4
-        assert len(PHASE3_TYPES) == 8
+        assert len(PHASE3_TYPES) == 9
         assert TaskType.SCHOOLS in PHASE2_TYPES
         assert TaskType.SCHOOL_MAJORS in PHASE3_TYPES

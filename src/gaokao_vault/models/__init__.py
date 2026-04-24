@@ -1,3 +1,4 @@
+from gaokao_vault.models.admission import MajorAdmissionResultItem
 from gaokao_vault.models.enrollment import CharterItem, EnrollmentPlanItem, TimelineItem
 from gaokao_vault.models.major import MajorCategoryItem, MajorItem, MajorSatisfactionItem, MajorSubcategoryItem
 from gaokao_vault.models.school import SchoolItem, SchoolSatisfactionItem
@@ -7,6 +8,7 @@ from gaokao_vault.models.special import SpecialEnrollmentItem
 __all__ = [
     "CharterItem",
     "EnrollmentPlanItem",
+    "MajorAdmissionResultItem",
     "MajorCategoryItem",
     "MajorItem",
     "MajorSatisfactionItem",

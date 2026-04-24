@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
 from scrapling.spiders import Request, Response
@@ -16,6 +17,9 @@ from gaokao_vault.db.queries.majors import (
 from gaokao_vault.models.major import SchoolMajorItem
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
+
+if TYPE_CHECKING:
+    import asyncpg
 
 logger = logging.getLogger(__name__)
 _HREF_CODE_PATTERN = re.compile(r"(?:code|zydm|specialityCode)-([A-Za-z0-9]+)")
@@ -32,13 +36,18 @@ class SchoolMajorSpider(BaseGaokaoSpider):
         super().__init__(*args, **kwargs)
         self._allow_name_fallback = False
 
-    async def _load_name_fallback_policy(self) -> bool:
+    async def _load_latest_task_status(self, task_type: str) -> asyncpg.Record | None:
         async with (await self._get_pool()).acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT status, failed_items FROM crawl_tasks WHERE task_type = $1 ORDER BY id DESC LIMIT 1",
-                TaskType.MAJORS,
+            return await conn.fetchrow(
+                """
+                SELECT status, failed_items, finished_at
+                FROM crawl_tasks
+                WHERE task_type = $1
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                task_type,
             )
-        return bool(row and row["status"] == "success" and row["failed_items"] == 0)
 
     @staticmethod
     def _extract_code_from_href(href: str) -> str | None:
@@ -145,10 +154,34 @@ class SchoolMajorSpider(BaseGaokaoSpider):
 
     async def start_requests(self):
         try:
-            self._allow_name_fallback = await self._load_name_fallback_policy()
+            schools_row = await self._load_latest_task_status(TaskType.SCHOOLS)
+            majors_row = await self._load_latest_task_status(TaskType.MAJORS)
+
+            schools_stable = bool(
+                schools_row
+                and schools_row["status"] == "success"
+                and schools_row["failed_items"] == 0
+                and schools_row["finished_at"] is not None
+            )
+            majors_stable = bool(
+                majors_row
+                and majors_row["status"] == "success"
+                and majors_row["failed_items"] == 0
+                and majors_row["finished_at"] is not None
+            )
         except Exception:
-            logger.warning("Failed to load name fallback policy for school majors", exc_info=True)
-            self._allow_name_fallback = False
+            logger.warning("Failed to verify upstream task stability for school majors", exc_info=True)
+            return
+
+        if not schools_stable or not majors_stable:
+            logger.warning(
+                "Skipping school_majors crawl because upstream tasks are not stable (schools=%s majors=%s)",
+                schools_stable,
+                majors_stable,
+            )
+            return
+
+        self._allow_name_fallback = majors_stable
 
         async with (await self._get_pool()).acquire() as conn:
             rows = await conn.fetch("SELECT id, sch_id FROM schools ORDER BY id")
