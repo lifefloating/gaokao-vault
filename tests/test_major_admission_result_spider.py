@@ -144,10 +144,12 @@ def test_start_requests_yields_school_requests_when_upstreams_are_stable() -> No
         provinces=[{"id": 7, "name": "吉林", "code": "22"}],
     )
 
-    with patch.object(spider, "_get_pool", new=AsyncMock(return_value=_FakePool(conn))):
+    get_pool = AsyncMock(return_value=_FakePool(conn))
+    with patch.object(spider, "_get_pool", new=get_pool):
         requests = asyncio.run(_collect(spider.start_requests()))
 
     assert len(requests) > 0
+    assert get_pool.await_count == 1
     assert requests[0].meta["school_id"] == 1
     assert requests[0].meta["province_id"] == 7
     assert requests[0].meta["province_code"] == "22"

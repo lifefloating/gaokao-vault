@@ -29,10 +29,11 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
     download_delay = 2.0
 
     async def start_requests(self):
-        async with (await self._get_pool()).acquire() as conn:
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT id, sch_id FROM schools ORDER BY id")
 
-        provinces = await load_province_targets(await self._get_pool())
+        provinces = await load_province_targets(pool)
         years = iter_crawl_years(mode=self.mode, full_start_year=YEAR_START, current_year=YEAR_END)
 
         for row in rows:

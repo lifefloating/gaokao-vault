@@ -124,10 +124,12 @@ def test_start_requests_uses_province_code_for_remote_url_and_local_id_for_stora
     spider = _make_spider()
     spider.mode = "incremental"
 
-    with patch.object(spider, "_get_pool", new=AsyncMock(return_value=_FakePool(_FakeStartConnection()))):
+    get_pool = AsyncMock(return_value=_FakePool(_FakeStartConnection()))
+    with patch.object(spider, "_get_pool", new=get_pool):
         requests = asyncio.run(_collect(spider.start_requests()))
 
     assert requests
+    assert get_pool.await_count == 1
     assert requests[0].meta["province_id"] == 7
     assert requests[0].meta["province_code"] == "22"
     assert "provinceId=22" in requests[0].url

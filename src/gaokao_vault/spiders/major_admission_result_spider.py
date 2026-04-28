@@ -33,8 +33,8 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
     name: str = "major_admission_result_spider"
     task_type: str = TaskType.MAJOR_ADMISSION_RESULTS
 
-    async def _load_latest_task_status(self, task_type: str) -> asyncpg.Record | None:
-        async with (await self._get_pool()).acquire() as conn:
+    async def _load_latest_task_status(self, pool: asyncpg.Pool, task_type: str) -> asyncpg.Record | None:
+        async with pool.acquire() as conn:
             return await conn.fetchrow(
                 """
                 SELECT status, failed_items, finished_at
@@ -93,8 +93,9 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
 
     async def start_requests(self):
         try:
-            schools_row = await self._load_latest_task_status(TaskType.SCHOOLS)
-            majors_row = await self._load_latest_task_status(TaskType.MAJORS)
+            pool = await self._get_pool()
+            schools_row = await self._load_latest_task_status(pool, TaskType.SCHOOLS)
+            majors_row = await self._load_latest_task_status(pool, TaskType.MAJORS)
 
             schools_stable = bool(
                 schools_row
@@ -120,10 +121,10 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
             )
             return
 
-        async with (await self._get_pool()).acquire() as conn:
+        async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT id, sch_id FROM schools ORDER BY id")
 
-        provinces = await load_province_targets(await self._get_pool())
+        provinces = await load_province_targets(pool)
         years = iter_crawl_years(mode=self.mode, full_start_year=_YEAR_START, current_year=_YEAR_END)
 
         for row in rows:
