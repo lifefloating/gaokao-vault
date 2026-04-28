@@ -28,6 +28,15 @@ class _FakePool:
         return _Acquire(self.conn)
 
 
+class _FakeStartConnection:
+    async def fetch(self, query: str, *args: object):
+        if "FROM schools ORDER BY id" in query:
+            return [{"id": 1, "sch_id": 34}]
+        if "FROM provinces ORDER BY id" in query:
+            return [{"id": 7, "name": "吉林", "code": "22"}]
+        return []
+
+
 def _make_spider() -> EnrollmentPlanSpider:
     db_config = DatabaseConfig(
         dsn="postgresql://test:test@localhost:5432/test_db",
@@ -109,3 +118,16 @@ def test_parse_enrollment_plan_resolves_major_id_and_subject_category() -> None:
     assert items[0]["subject_category_id"] == 3
     assert items[0]["batch"] == "本科批"
     assert items[0]["plan_count"] == 5
+
+
+def test_start_requests_uses_province_code_for_remote_url_and_local_id_for_storage() -> None:
+    spider = _make_spider()
+    spider.mode = "incremental"
+
+    with patch.object(spider, "_get_pool", new=AsyncMock(return_value=_FakePool(_FakeStartConnection()))):
+        requests = asyncio.run(_collect(spider.start_requests()))
+
+    assert requests
+    assert requests[0].meta["province_id"] == 7
+    assert requests[0].meta["province_code"] == "22"
+    assert "provinceId=22" in requests[0].url

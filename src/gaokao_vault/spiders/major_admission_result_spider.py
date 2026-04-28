@@ -14,6 +14,7 @@ from gaokao_vault.db.queries.majors import find_major_by_code, find_major_by_sou
 from gaokao_vault.models.admission import MajorAdmissionResultItem
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
+from gaokao_vault.spiders.scope import iter_crawl_years, load_province_targets
 
 if TYPE_CHECKING:
     import asyncpg
@@ -24,7 +25,6 @@ _HREF_CODE_PATTERN = re.compile(r"(?:code|zydm|specialityCode)-([A-Za-z0-9]+)")
 _ADMISSION_RESULT_URL_TEMPLATE = (
     f"{BASE_URL}/sch/schoolInfo--schId-{{sch_id}}.dhtml?provinceId={{province_id}}&year={{year}}&tab=score"
 )
-_PROVINCE_IDS = list(range(1, 32))
 _YEAR_START = 2020
 _YEAR_END = datetime.now().year
 
@@ -123,19 +123,23 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
         async with (await self._get_pool()).acquire() as conn:
             rows = await conn.fetch("SELECT id, sch_id FROM schools ORDER BY id")
 
+        provinces = await load_province_targets(await self._get_pool())
+        years = iter_crawl_years(mode=self.mode, full_start_year=_YEAR_START, current_year=_YEAR_END)
+
         for row in rows:
-            for province_id in _PROVINCE_IDS:
-                for year in range(_YEAR_START, _YEAR_END + 1):
+            for province in provinces:
+                for year in years:
                     yield Request(
                         _ADMISSION_RESULT_URL_TEMPLATE.format(
                             sch_id=row["sch_id"],
-                            province_id=province_id,
+                            province_id=province.url_value,
                             year=year,
                         ),
                         callback=self.parse,
                         meta={
                             "school_id": row["id"],
-                            "province_id": province_id,
+                            "province_id": province.id,
+                            "province_code": province.url_value,
                             "year": year,
                         },
                     )

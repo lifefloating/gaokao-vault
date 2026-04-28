@@ -11,10 +11,10 @@ from gaokao_vault.db.queries.majors import find_majors_by_name
 from gaokao_vault.models.enrollment import EnrollmentPlanItem
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
+from gaokao_vault.spiders.scope import iter_crawl_years, load_province_targets
 
 logger = logging.getLogger(__name__)
 
-PROVINCE_IDS = list(range(1, 32))
 YEAR_START = 2020
 YEAR_END = datetime.now().year
 
@@ -32,20 +32,25 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
         async with (await self._get_pool()).acquire() as conn:
             rows = await conn.fetch("SELECT id, sch_id FROM schools ORDER BY id")
 
+        provinces = await load_province_targets(await self._get_pool())
+        years = iter_crawl_years(mode=self.mode, full_start_year=YEAR_START, current_year=YEAR_END)
+
         for row in rows:
             school_id = row["id"]
             sch_id = row["sch_id"]
-            for province_id in PROVINCE_IDS:
-                for year in range(YEAR_START, YEAR_END + 1):
+            for province in provinces:
+                for year in years:
                     url = (
-                        f"{BASE_URL}/sch/schoolInfo--schId-{sch_id}.dhtml?provinceId={province_id}&year={year}&tab=plan"
+                        f"{BASE_URL}/sch/schoolInfo--schId-{sch_id}.dhtml?"
+                        f"provinceId={province.url_value}&year={year}&tab=plan"
                     )
                     yield Request(
                         url,
                         callback=self.parse,
                         meta={
                             "school_id": school_id,
-                            "province_id": province_id,
+                            "province_id": province.id,
+                            "province_code": province.url_value,
                             "year": year,
                         },
                     )
