@@ -12,10 +12,10 @@ from gaokao_vault.pipeline.hasher import compute_content_hash
 from gaokao_vault.pipeline.sink import BatchSink
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
+from gaokao_vault.spiders.scope import iter_crawl_years, load_province_targets
 
 logger = logging.getLogger(__name__)
 
-PROVINCE_IDS = list(range(1, 32))
 YEAR_START = 2018
 YEAR_END = datetime.now().year
 
@@ -46,13 +46,15 @@ class ScoreSegmentSpider(BaseGaokaoSpider):
         return await batch_upsert_score_segments(conn, rows)
 
     async def start_requests(self):
-        for province_id in PROVINCE_IDS:
-            for year in range(YEAR_START, YEAR_END + 1):
-                url = f"{BASE_URL}/gkxx/zc/ss/?provinceId={province_id}&year={year}&type=segment"
+        provinces = await load_province_targets(await self._get_pool())
+        years = iter_crawl_years(mode=self.mode, full_start_year=YEAR_START, current_year=YEAR_END)
+        for province in provinces:
+            for year in years:
+                url = f"{BASE_URL}/gkxx/zc/ss/?provinceId={province.url_value}&year={year}&type=segment"
                 yield Request(
                     url,
                     callback=self.parse,
-                    meta={"province_id": province_id, "year": year},
+                    meta={"province_id": province.id, "province_code": province.url_value, "year": year},
                 )
 
     async def parse(self, response: Response):

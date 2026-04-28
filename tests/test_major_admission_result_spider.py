@@ -29,9 +29,15 @@ class _FakePool:
 
 
 class _FakeTaskStatusConnection:
-    def __init__(self, task_rows: dict[str, dict | None], schools: list[dict] | None = None) -> None:
+    def __init__(
+        self,
+        task_rows: dict[str, dict | None],
+        schools: list[dict] | None = None,
+        provinces: list[dict] | None = None,
+    ) -> None:
         self.task_rows = task_rows
         self.schools = schools or []
+        self.provinces = provinces or []
         self.fetch_calls: list[tuple[str, tuple[object, ...]]] = []
 
     async def fetchrow(self, _query: str, task_type: str):
@@ -41,6 +47,8 @@ class _FakeTaskStatusConnection:
         self.fetch_calls.append((query, args))
         if "FROM schools ORDER BY id" in query:
             return self.schools
+        if "FROM provinces ORDER BY id" in query:
+            return self.provinces
         return []
 
 
@@ -133,14 +141,19 @@ def test_start_requests_yields_school_requests_when_upstreams_are_stable() -> No
             "majors": {"status": "success", "failed_items": 0, "finished_at": "2026-04-24T00:00:00"},
         },
         schools=[{"id": 1, "sch_id": 34}],
+        provinces=[{"id": 7, "name": "吉林", "code": "22"}],
     )
 
-    with patch.object(spider, "_get_pool", new=AsyncMock(return_value=_FakePool(conn))):
+    get_pool = AsyncMock(return_value=_FakePool(conn))
+    with patch.object(spider, "_get_pool", new=get_pool):
         requests = asyncio.run(_collect(spider.start_requests()))
 
     assert len(requests) > 0
+    assert get_pool.await_count == 1
     assert requests[0].meta["school_id"] == 1
-    assert requests[0].meta["province_id"] == 1
+    assert requests[0].meta["province_id"] == 7
+    assert requests[0].meta["province_code"] == "22"
+    assert "provinceId=22" in requests[0].url
 
 
 def test_parse_yields_major_admission_result_items() -> None:

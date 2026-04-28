@@ -14,6 +14,7 @@ from gaokao_vault.db.queries.majors import find_major_by_code, find_major_by_sou
 from gaokao_vault.models.admission import MajorAdmissionResultItem
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
+from gaokao_vault.spiders.scope import iter_crawl_years, load_province_targets
 
 if TYPE_CHECKING:
     import asyncpg
@@ -24,7 +25,6 @@ _HREF_CODE_PATTERN = re.compile(r"(?:code|zydm|specialityCode)-([A-Za-z0-9]+)")
 _ADMISSION_RESULT_URL_TEMPLATE = (
     f"{BASE_URL}/sch/schoolInfo--schId-{{sch_id}}.dhtml?provinceId={{province_id}}&year={{year}}&tab=score"
 )
-_PROVINCE_IDS = list(range(1, 32))
 _YEAR_START = 2020
 _YEAR_END = datetime.now().year
 
@@ -33,8 +33,8 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
     name: str = "major_admission_result_spider"
     task_type: str = TaskType.MAJOR_ADMISSION_RESULTS
 
-    async def _load_latest_task_status(self, task_type: str) -> asyncpg.Record | None:
-        async with (await self._get_pool()).acquire() as conn:
+    async def _load_latest_task_status(self, pool: asyncpg.Pool, task_type: str) -> asyncpg.Record | None:
+        async with pool.acquire() as conn:
             return await conn.fetchrow(
                 """
                 SELECT status, failed_items, finished_at
@@ -93,8 +93,9 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
 
     async def start_requests(self):
         try:
-            schools_row = await self._load_latest_task_status(TaskType.SCHOOLS)
-            majors_row = await self._load_latest_task_status(TaskType.MAJORS)
+            pool = await self._get_pool()
+            schools_row = await self._load_latest_task_status(pool, TaskType.SCHOOLS)
+            majors_row = await self._load_latest_task_status(pool, TaskType.MAJORS)
 
             schools_stable = bool(
                 schools_row
@@ -120,22 +121,26 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
             )
             return
 
-        async with (await self._get_pool()).acquire() as conn:
+        async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT id, sch_id FROM schools ORDER BY id")
 
+        provinces = await load_province_targets(pool)
+        years = iter_crawl_years(mode=self.mode, full_start_year=_YEAR_START, current_year=_YEAR_END)
+
         for row in rows:
-            for province_id in _PROVINCE_IDS:
-                for year in range(_YEAR_START, _YEAR_END + 1):
+            for province in provinces:
+                for year in years:
                     yield Request(
                         _ADMISSION_RESULT_URL_TEMPLATE.format(
                             sch_id=row["sch_id"],
-                            province_id=province_id,
+                            province_id=province.url_value,
                             year=year,
                         ),
                         callback=self.parse,
                         meta={
                             "school_id": row["id"],
-                            "province_id": province_id,
+                            "province_id": province.id,
+                            "province_code": province.url_value,
                             "year": year,
                         },
                     )
