@@ -12,6 +12,7 @@ from gaokao_vault.constants import BASE_URL, TaskType
 from gaokao_vault.db.queries.admission import upsert_major_admission_result
 from gaokao_vault.db.queries.majors import find_major_by_code, find_major_by_source_id, find_majors_by_name
 from gaokao_vault.models.admission import MajorAdmissionResultItem
+from gaokao_vault.pipeline.quality import missing_field_flags
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
 from gaokao_vault.spiders.scope import iter_crawl_years, load_province_targets
@@ -27,6 +28,7 @@ _ADMISSION_RESULT_URL_TEMPLATE = (
 )
 _YEAR_START = 2020
 _YEAR_END = datetime.now().year
+_DATA_SOURCE = "gaokao.chsi.com.cn"
 
 
 class MajorAdmissionResultSpider(BaseGaokaoSpider):
@@ -69,6 +71,7 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
         *,
         name: str | None,
         href: str,
+        code: str | None = None,
     ) -> int | None:
         parsed = urlparse(href)
         query = parse_qs(parsed.query)
@@ -78,9 +81,14 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
             if row is not None:
                 return row["id"]
 
-        code = self._extract_code_from_href(href)
         if code:
             row = await find_major_by_code(conn, code)
+            if row is not None:
+                return row["id"]
+
+        href_code = self._extract_code_from_href(href)
+        if href_code:
+            row = await find_major_by_code(conn, href_code)
             if row is not None:
                 return row["id"]
 
@@ -156,21 +164,44 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
             return
 
         async with (await self._get_pool()).acquire() as conn:
+            header_map: dict[str, int] | None = None
             for row in response.css("table.admission-table tr"):
+                headers = [
+                    "".join(part.strip() for part in cell.css("::text").getall() if part.strip())
+                    for cell in row.css("th")
+                ]
+                if headers:
+                    header_map = {text: idx for idx, text in enumerate(headers)}
+                    continue
+
                 cells = row.css("td")
                 if len(cells) < 5:
                     continue
 
-                major_link = cells[0].css("a").first
+                major_idx = _column_index(header_map, ("专业名称", "专业"), 0)
+                subject_idx = _column_index(header_map, ("科类", "选科"), 1)
+                batch_idx = _column_index(header_map, ("批次",), 2)
+                min_score_idx = _column_index(header_map, ("最低分", "最低分数"), 3)
+                min_rank_idx = _column_index(header_map, ("最低位次", "最低排名"), 4)
+                avg_score_idx = _column_index(header_map, ("平均分",), 5)
+                admitted_count_idx = _column_index(header_map, ("录取人数", "招生人数", "计划数"), 6)
+                school_code_idx = _column_index(header_map, ("院校代码", "学校代码"), -1)
+                school_name_idx = _column_index(header_map, ("院校名称", "学校名称"), -1)
+                major_group_idx = _column_index(header_map, ("院校专业组", "专业组", "专业组代码"), -1)
+                major_code_idx = _column_index(header_map, ("专业代码",), -1)
+                campus_idx = _column_index(header_map, ("校区",), -1)
+
+                major_link = cells[major_idx].css("a").first if 0 <= major_idx < len(cells) else None
                 href = major_link.attrib.get("href", "").strip() if major_link else ""
-                major_name = "".join(part.strip() for part in cells[0].css("::text").getall() if part.strip()) or None
-                subject_category_raw = cells[1].css("::text").get("").strip() or None
-                batch_raw = cells[2].css("::text").get("").strip() or None
+                major_name = _cell_text(cells, major_idx)
+                subject_category_raw = _cell_text(cells, subject_idx)
+                batch_raw = _cell_text(cells, batch_idx)
+                major_code_raw = _cell_text(cells, major_code_idx) or self._extract_code_from_href(href)
 
                 if not major_name or not batch_raw:
                     continue
 
-                major_id = await self._resolve_major_id(conn, name=major_name, href=href)
+                major_id = await self._resolve_major_id(conn, name=major_name, href=href, code=major_code_raw)
                 if major_id is None:
                     logger.warning(
                         "Unable to resolve major in admission results school_id=%s province_id=%s year=%s name=%s href=%s",
@@ -183,30 +214,36 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
                     continue
 
                 subject_category_id = await self._resolve_subject_category(subject_category_raw or "")
-                min_score = _parse_int(cells[3].css("::text").get("").strip())
-                min_rank = _parse_int(cells[4].css("::text").get("").strip())
-                avg_score = _parse_int(cells[5].css("::text").get("").strip()) if len(cells) > 5 else None
-                admitted_count = _parse_int(cells[6].css("::text").get("").strip()) if len(cells) > 6 else None
+                min_score = _parse_int(_cell_text(cells, min_score_idx) or "")
+                min_rank = _parse_int(_cell_text(cells, min_rank_idx) or "")
+                avg_score = _parse_int(_cell_text(cells, avg_score_idx) or "")
+                admitted_count = _parse_int(_cell_text(cells, admitted_count_idx) or "")
 
-                item = validate_item(
-                    MajorAdmissionResultItem,
-                    {
-                        "school_id": school_id,
-                        "major_id": major_id,
-                        "province_id": province_id,
-                        "year": year,
-                        "subject_category_id": subject_category_id,
-                        "batch": batch_raw,
-                        "min_score": min_score,
-                        "min_rank": min_rank,
-                        "avg_score": avg_score,
-                        "admitted_count": admitted_count,
-                        "major_name_raw": major_name,
-                        "subject_category_raw": subject_category_raw,
-                        "batch_raw": batch_raw,
-                        "source_url": response.url,
-                    },
-                )
+                data = {
+                    "school_id": school_id,
+                    "major_id": major_id,
+                    "province_id": province_id,
+                    "year": year,
+                    "subject_category_id": subject_category_id,
+                    "batch": batch_raw,
+                    "min_score": min_score,
+                    "min_rank": min_rank,
+                    "avg_score": avg_score,
+                    "admitted_count": admitted_count,
+                    "school_code_raw": _cell_text(cells, school_code_idx),
+                    "school_name_raw": _cell_text(cells, school_name_idx),
+                    "major_group_code": _cell_text(cells, major_group_idx),
+                    "major_code_raw": major_code_raw,
+                    "campus": _cell_text(cells, campus_idx),
+                    "major_name_raw": major_name,
+                    "subject_category_raw": subject_category_raw,
+                    "batch_raw": batch_raw,
+                    "source_url": response.url,
+                    "data_source": _DATA_SOURCE,
+                }
+                data["quality_flags"] = missing_field_flags(data, ("min_score", "min_rank", "admitted_count"))
+
+                item = validate_item(MajorAdmissionResultItem, data)
                 if item:
                     yield item
                     await self.process_item(
@@ -227,3 +264,19 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
 def _parse_int(value: str) -> int | None:
     digits = re.sub(r"[^\d]", "", value)
     return int(digits) if digits else None
+
+
+def _column_index(header_map: dict[str, int] | None, candidates: tuple[str, ...], default: int) -> int:
+    if header_map is None:
+        return default
+    for candidate in candidates:
+        if candidate in header_map:
+            return header_map[candidate]
+    return default
+
+
+def _cell_text(cells, index: int) -> str | None:
+    if index < 0 or index >= len(cells):
+        return None
+    text = "".join(part.strip() for part in cells[index].css("::text").getall() if part.strip())
+    return text or None

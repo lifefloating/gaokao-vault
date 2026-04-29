@@ -117,6 +117,43 @@ _ADMISSION_HTML = """
 </html>
 """
 
+_ENRICHED_ADMISSION_HTML = """
+<html>
+  <body>
+    <table class="admission-table">
+      <tr>
+        <th>院校代码</th>
+        <th>院校名称</th>
+        <th>院校专业组</th>
+        <th>专业代码</th>
+        <th>专业</th>
+        <th>科类</th>
+        <th>批次</th>
+        <th>最低分</th>
+        <th>最低位次</th>
+        <th>平均分</th>
+        <th>录取人数</th>
+        <th>校区</th>
+      </tr>
+      <tr>
+        <td>10200</td>
+        <td>测试大学</td>
+        <td>01</td>
+        <td>080901</td>
+        <td><a href="/sch/major--code-080901.dhtml">计算机科学与技术</a></td>
+        <td>物理类</td>
+        <td>本科批</td>
+        <td>612</td>
+        <td>3456</td>
+        <td>618</td>
+        <td>8</td>
+        <td>主校区</td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
+
 
 def test_start_requests_skips_when_upstreams_are_unstable() -> None:
     spider = _make_spider()
@@ -181,3 +218,35 @@ def test_parse_yields_major_admission_result_items() -> None:
     assert items[0]["min_score"] == 612
     assert items[0]["min_rank"] == 3456
     assert items[0]["admitted_count"] == 8
+
+
+def test_parse_major_admission_result_preserves_group_code_campus_and_quality_flags() -> None:
+    spider = _make_spider()
+    response = _make_response(
+        _ENRICHED_ADMISSION_HTML,
+        "https://gaokao.chsi.com.cn/test-admission",
+        {"school_id": 1, "province_id": 7, "year": 2025},
+    )
+    fake_pool = _FakePool(_FakeMajorLookupConnection())
+
+    with (
+        patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch.object(spider, "_resolve_subject_category", new=AsyncMock(return_value=3)),
+        patch.object(spider, "process_item", new=AsyncMock(return_value="new")) as process_item,
+    ):
+        items = asyncio.run(_collect(spider.parse(response)))
+
+    assert len(items) == 1
+    assert items[0]["school_code_raw"] == "10200"
+    assert items[0]["school_name_raw"] == "测试大学"
+    assert items[0]["major_group_code"] == "01"
+    assert items[0]["major_code_raw"] == "080901"
+    assert items[0]["campus"] == "主校区"
+    assert items[0]["min_rank"] == 3456
+    assert items[0]["data_source"] == "gaokao.chsi.com.cn"
+    assert items[0]["quality_flags"] == []
+    process_item.assert_awaited_once()
+    await_args = process_item.await_args
+    assert await_args is not None
+    persisted_item = await_args.args[0]
+    assert persisted_item["major_code_raw"] == "080901"

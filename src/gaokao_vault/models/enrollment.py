@@ -17,6 +17,17 @@ class EnrollmentPlanItem(BaseModel):
     duration: str | None = None
     tuition: str | None = None
     note: str | None = None
+    major_group_code: str | None = None
+    major_code_raw: str | None = None
+    campus: str | None = None
+    education_location: str | None = None
+    selection_requirement: str | None = None
+    physical_exam_limit: str | None = None
+    single_subject_limit: str | None = None
+    adjustment_rule: str | None = None
+    data_source: str | None = None
+    source_updated_at: datetime | None = None
+    quality_flags: list[str] = Field(default_factory=list)
 
 
 class CharterItem(BaseModel):

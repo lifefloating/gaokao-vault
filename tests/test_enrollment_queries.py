@@ -4,7 +4,7 @@ import asyncio
 import json
 from typing import Any, cast
 
-from gaokao_vault.db.queries.admission import upsert_major_admission_result
+from gaokao_vault.db.queries.enrollment import upsert_enrollment_plan
 
 
 class _FakeConnection:
@@ -15,37 +15,40 @@ class _FakeConnection:
     async def fetchrow(self, query: str, *args: object) -> dict[str, int]:
         self.query = query
         self.args = args
-        return {"id": 88}
+        return {"id": 77}
 
 
-def test_upsert_major_admission_result_uses_natural_key() -> None:
+def test_upsert_enrollment_plan_preserves_rule_and_quality_fields() -> None:
     conn = _FakeConnection()
 
-    admission_id = asyncio.run(
-        upsert_major_admission_result(
+    plan_id = asyncio.run(
+        upsert_enrollment_plan(
             cast(Any, conn),
             {
                 "school_id": 1,
-                "major_id": 2,
                 "province_id": 7,
                 "year": 2025,
                 "subject_category_id": 3,
                 "batch": "本科批",
-                "school_code_raw": "10200",
-                "school_name_raw": "测试大学",
+                "major_name": "计算机科学与技术",
                 "major_group_code": "01",
                 "major_code_raw": "080901",
                 "campus": "主校区",
+                "education_location": "长春市",
+                "selection_requirement": "物理+化学",
+                "physical_exam_limit": "不招色盲",
+                "single_subject_limit": "英语单科不低于110分",
+                "adjustment_rule": "服从专业调剂",
                 "data_source": "gaokao.chsi.com.cn",
                 "quality_flags": [],
             },
         )
     )
 
-    assert admission_id == 88
-    assert "major_admission_results" in conn.query
-    assert "ON CONFLICT (school_id, major_id, province_id, year, subject_category_id, batch)" in conn.query
+    assert plan_id == 77
+    assert "enrollment_plans" in conn.query
     assert "major_group_code" in conn.query
-    assert "10200" in conn.args
-    assert "080901" in conn.args
+    assert "selection_requirement" in conn.query
+    assert "01" in conn.args
+    assert "物理+化学" in conn.args
     assert json.dumps([], ensure_ascii=False) in conn.args

@@ -9,6 +9,7 @@ from gaokao_vault.db.queries.majors import (
     upsert_major_subcategory,
     upsert_school_major,
 )
+from gaokao_vault.db.queries.recommendation import find_candidate_admission_chain
 from gaokao_vault.db.queries.schools import (
     find_school_by_sch_id,
     find_schools_by_city,
@@ -21,6 +22,7 @@ from gaokao_vault.db.queries.special import upsert_special_enrollment
 __all__ = [
     "batch_upsert_score_segments",
     "create_task",
+    "find_candidate_admission_chain",
     "find_latest_hash",
     "find_school_by_sch_id",
     "find_schools_by_city",

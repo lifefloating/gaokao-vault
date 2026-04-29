@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -17,8 +19,16 @@ class MajorAdmissionResultItem(BaseModel):
     max_score: int | None = None
     max_rank: int | None = None
     admitted_count: int | None = None
+    school_code_raw: str | None = None
+    school_name_raw: str | None = None
+    major_group_code: str | None = None
+    major_code_raw: str | None = None
+    campus: str | None = None
     major_name_raw: str | None = None
     subject_category_raw: str | None = None
     batch_raw: str | None = None
     remark: str | None = None
     source_url: str | None = None
+    data_source: str | None = None
+    source_updated_at: datetime | None = None
+    quality_flags: list[str] = Field(default_factory=list)

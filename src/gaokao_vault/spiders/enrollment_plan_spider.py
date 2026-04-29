@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
 
 from scrapling.spiders import Request, Response
@@ -9,6 +10,7 @@ from gaokao_vault.constants import BASE_URL, TaskType
 from gaokao_vault.db.queries.enrollment import upsert_enrollment_plan
 from gaokao_vault.db.queries.majors import find_majors_by_name
 from gaokao_vault.models.enrollment import EnrollmentPlanItem
+from gaokao_vault.pipeline.quality import missing_field_flags
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
 from gaokao_vault.spiders.scope import iter_crawl_years, load_province_targets
@@ -17,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 YEAR_START = 2020
 YEAR_END = datetime.now().year
+DATA_SOURCE = "gaokao.chsi.com.cn"
 
 
 class EnrollmentPlanSpider(BaseGaokaoSpider):
@@ -88,6 +91,13 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
                 duration = _cell_text(cells, _column_index(header_map, ("学制",), 4))
                 tuition = _cell_text(cells, _column_index(header_map, ("学费",), 5))
                 note = _cell_text(cells, _column_index(header_map, ("备注", "说明"), 6))
+                major_group_code = _cell_text(
+                    cells, _column_index(header_map, ("院校专业组", "专业组", "专业组代码"), -1)
+                )
+                major_code_raw = _cell_text(cells, _column_index(header_map, ("专业代码",), -1))
+                selection_requirement = _cell_text(cells, _column_index(header_map, ("选科要求", "再选科目"), -1))
+                campus = _cell_text(cells, _column_index(header_map, ("校区",), -1))
+                education_location = _cell_text(cells, _column_index(header_map, ("办学地点", "就读地点"), -1))
 
                 if not major_name:
                     continue
@@ -95,6 +105,9 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
                 major_id = await _resolve_major_id(conn, major_name)
                 subject_category_id = await self._resolve_subject_category(subject_category_raw or "")
                 plan_count = int(plan_text) if plan_text and plan_text.isdigit() else None
+                physical_exam_limit = _extract_note_rule(note, ("体检", "色盲", "色弱", "限报", "不招"))
+                single_subject_limit = _extract_note_rule(note, ("单科", "英语", "数学", "语文"))
+                adjustment_rule = _extract_note_rule(note, ("调剂",))
 
                 data = {
                     "school_id": school_id,
@@ -108,7 +121,20 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
                     "duration": duration,
                     "tuition": tuition,
                     "note": note,
+                    "major_group_code": major_group_code,
+                    "major_code_raw": major_code_raw,
+                    "campus": campus,
+                    "education_location": education_location,
+                    "selection_requirement": selection_requirement,
+                    "physical_exam_limit": physical_exam_limit,
+                    "single_subject_limit": single_subject_limit,
+                    "adjustment_rule": adjustment_rule,
+                    "data_source": DATA_SOURCE,
                 }
+                data["quality_flags"] = missing_field_flags(
+                    data,
+                    ("major_id", "plan_count", "selection_requirement"),
+                )
 
                 item = validate_item(EnrollmentPlanItem, data)
                 if item:
@@ -138,10 +164,20 @@ def _column_index(header_map: dict[str, int] | None, candidates: tuple[str, ...]
 
 
 def _cell_text(cells, index: int) -> str | None:
+    if index < 0:
+        return None
     if index >= len(cells):
         return None
     text = cells[index].css("::text").get("").strip()
     return text or None
+
+
+def _extract_note_rule(note: str | None, keywords: tuple[str, ...]) -> str | None:
+    if not note:
+        return None
+    parts = [part.strip() for part in re.split(r"[\uFF0C,\uFF1B;\u3002]", note) if part.strip()]
+    matches = [part for part in parts if any(keyword in part for keyword in keywords)]
+    return ";".join(matches) if matches else None
 
 
 async def _resolve_major_id(conn, major_name: str) -> int | None:

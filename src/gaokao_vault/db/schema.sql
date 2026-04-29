@@ -298,6 +298,17 @@ CREATE TABLE IF NOT EXISTS enrollment_plans (
     duration        VARCHAR(20),
     tuition         VARCHAR(50),
     note            VARCHAR(500),
+    major_group_code VARCHAR(50),
+    major_code_raw  VARCHAR(50),
+    campus          VARCHAR(100),
+    education_location VARCHAR(100),
+    selection_requirement VARCHAR(255),
+    physical_exam_limit VARCHAR(255),
+    single_subject_limit VARCHAR(255),
+    adjustment_rule VARCHAR(255),
+    data_source     VARCHAR(100),
+    source_updated_at TIMESTAMPTZ,
+    quality_flags   JSONB NOT NULL DEFAULT '[]'::jsonb,
     content_hash    VARCHAR(64),
     crawl_task_id   BIGINT REFERENCES crawl_tasks(id),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -308,6 +319,18 @@ CREATE TABLE IF NOT EXISTS enrollment_plans (
 CREATE INDEX IF NOT EXISTS idx_plans_school_province_year ON enrollment_plans(school_id, province_id, year);
 CREATE INDEX IF NOT EXISTS idx_plans_province_year ON enrollment_plans(province_id, year);
 CREATE INDEX IF NOT EXISTS idx_plans_major ON enrollment_plans(major_id) WHERE major_id IS NOT NULL;
+
+ALTER TABLE enrollment_plans ADD COLUMN IF NOT EXISTS major_group_code VARCHAR(50);
+ALTER TABLE enrollment_plans ADD COLUMN IF NOT EXISTS major_code_raw VARCHAR(50);
+ALTER TABLE enrollment_plans ADD COLUMN IF NOT EXISTS campus VARCHAR(100);
+ALTER TABLE enrollment_plans ADD COLUMN IF NOT EXISTS education_location VARCHAR(100);
+ALTER TABLE enrollment_plans ADD COLUMN IF NOT EXISTS selection_requirement VARCHAR(255);
+ALTER TABLE enrollment_plans ADD COLUMN IF NOT EXISTS physical_exam_limit VARCHAR(255);
+ALTER TABLE enrollment_plans ADD COLUMN IF NOT EXISTS single_subject_limit VARCHAR(255);
+ALTER TABLE enrollment_plans ADD COLUMN IF NOT EXISTS adjustment_rule VARCHAR(255);
+ALTER TABLE enrollment_plans ADD COLUMN IF NOT EXISTS data_source VARCHAR(100);
+ALTER TABLE enrollment_plans ADD COLUMN IF NOT EXISTS source_updated_at TIMESTAMPTZ;
+ALTER TABLE enrollment_plans ADD COLUMN IF NOT EXISTS quality_flags JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 DROP TRIGGER IF EXISTS update_enrollment_plans_updated_at ON enrollment_plans;
 CREATE TRIGGER update_enrollment_plans_updated_at BEFORE UPDATE ON enrollment_plans
@@ -328,11 +351,19 @@ CREATE TABLE IF NOT EXISTS major_admission_results (
     max_score       INTEGER,
     max_rank        INTEGER,
     admitted_count  INTEGER,
+    school_code_raw VARCHAR(50),
+    school_name_raw VARCHAR(100),
+    major_group_code VARCHAR(50),
+    major_code_raw  VARCHAR(50),
+    campus          VARCHAR(100),
     major_name_raw  VARCHAR(100),
     subject_category_raw VARCHAR(50),
     batch_raw       VARCHAR(50),
     remark          VARCHAR(500),
     source_url      VARCHAR(255),
+    data_source     VARCHAR(100),
+    source_updated_at TIMESTAMPTZ,
+    quality_flags   JSONB NOT NULL DEFAULT '[]'::jsonb,
     content_hash    VARCHAR(64),
     crawl_task_id   BIGINT REFERENCES crawl_tasks(id),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -344,6 +375,15 @@ CREATE INDEX IF NOT EXISTS idx_major_admission_school_province_year
     ON major_admission_results(school_id, province_id, year);
 CREATE INDEX IF NOT EXISTS idx_major_admission_major
     ON major_admission_results(major_id);
+
+ALTER TABLE major_admission_results ADD COLUMN IF NOT EXISTS school_code_raw VARCHAR(50);
+ALTER TABLE major_admission_results ADD COLUMN IF NOT EXISTS school_name_raw VARCHAR(100);
+ALTER TABLE major_admission_results ADD COLUMN IF NOT EXISTS major_group_code VARCHAR(50);
+ALTER TABLE major_admission_results ADD COLUMN IF NOT EXISTS major_code_raw VARCHAR(50);
+ALTER TABLE major_admission_results ADD COLUMN IF NOT EXISTS campus VARCHAR(100);
+ALTER TABLE major_admission_results ADD COLUMN IF NOT EXISTS data_source VARCHAR(100);
+ALTER TABLE major_admission_results ADD COLUMN IF NOT EXISTS source_updated_at TIMESTAMPTZ;
+ALTER TABLE major_admission_results ADD COLUMN IF NOT EXISTS quality_flags JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 DROP TRIGGER IF EXISTS update_major_admission_results_updated_at ON major_admission_results;
 CREATE TRIGGER update_major_admission_results_updated_at BEFORE UPDATE ON major_admission_results

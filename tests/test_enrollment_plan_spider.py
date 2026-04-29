@@ -92,6 +92,43 @@ _PLAN_HTML = """
 </html>
 """
 
+_ENRICHED_PLAN_HTML = """
+<html>
+  <body>
+    <table class="plan-table">
+      <tr>
+        <th>院校专业组</th>
+        <th>专业代码</th>
+        <th>专业名称</th>
+        <th>科类</th>
+        <th>批次</th>
+        <th>计划数</th>
+        <th>选科要求</th>
+        <th>校区</th>
+        <th>办学地点</th>
+        <th>学制</th>
+        <th>学费</th>
+        <th>备注</th>
+      </tr>
+      <tr>
+        <td>01</td>
+        <td>080901</td>
+        <td>计算机科学与技术</td>
+        <td>物理类</td>
+        <td>本科批</td>
+        <td>5</td>
+        <td>物理+化学</td>
+        <td>主校区</td>
+        <td>长春市</td>
+        <td>四年</td>
+        <td>5800</td>
+        <td>不招色盲,英语单科不低于110分,服从专业调剂</td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
+
 
 def test_parse_enrollment_plan_resolves_major_id_and_subject_category() -> None:
     spider = _make_spider()
@@ -118,6 +155,44 @@ def test_parse_enrollment_plan_resolves_major_id_and_subject_category() -> None:
     assert items[0]["subject_category_id"] == 3
     assert items[0]["batch"] == "本科批"
     assert items[0]["plan_count"] == 5
+
+
+def test_parse_enrollment_plan_preserves_rule_fields_and_quality_flags() -> None:
+    spider = _make_spider()
+    response = _make_response(
+        _ENRICHED_PLAN_HTML,
+        "https://gaokao.chsi.com.cn/test-plan",
+        {"school_id": 1, "province_id": 7, "year": 2025},
+    )
+    fake_pool = _FakePool(AsyncMock())
+
+    with (
+        patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch.object(spider, "_resolve_subject_category", new=AsyncMock(return_value=3)),
+        patch(
+            "gaokao_vault.spiders.enrollment_plan_spider.find_majors_by_name",
+            new=AsyncMock(return_value=[{"id": 12}]),
+        ),
+        patch.object(spider, "process_item", new=AsyncMock(return_value="new")) as process_item,
+    ):
+        items = asyncio.run(_collect(spider.parse(response)))
+
+    assert len(items) == 1
+    assert items[0]["major_group_code"] == "01"
+    assert items[0]["major_code_raw"] == "080901"
+    assert items[0]["selection_requirement"] == "物理+化学"
+    assert items[0]["campus"] == "主校区"
+    assert items[0]["education_location"] == "长春市"
+    assert items[0]["physical_exam_limit"] == "不招色盲"
+    assert items[0]["single_subject_limit"] == "英语单科不低于110分"
+    assert items[0]["adjustment_rule"] == "服从专业调剂"
+    assert items[0]["data_source"] == "gaokao.chsi.com.cn"
+    assert items[0]["quality_flags"] == []
+    process_item.assert_awaited_once()
+    await_args = process_item.await_args
+    assert await_args is not None
+    persisted_item = await_args.args[0]
+    assert persisted_item["major_group_code"] == "01"
 
 
 def test_start_requests_uses_province_code_for_remote_url_and_local_id_for_storage() -> None:
