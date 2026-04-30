@@ -49,5 +49,17 @@ def test_find_candidate_admission_chain_joins_profile_admissions_and_current_pla
     assert rows == conn.rows
     assert "major_admission_results" in conn.query
     assert "enrollment_plans" in conn.query
+    assert "matched_candidates" in conn.query
+    assert "current_plans" in conn.query
     assert "admission_history" in conn.query
+    assert "current_plan_options" in conn.query
+    assert "ep.province_id = $1" in conn.query
+    assert "ep.year = $2" in conn.query
+    assert "ep.selection_requirement" in conn.query
+    assert "major_group_code" in conn.query
+    assert "min_rank" in conn.query
+    assert "program_type" in conn.query
+    assert "eligibility_requirements" in conn.query
+    assert "physical_exam_or_political_review" in conn.query
+    assert "service_obligation" in conn.query
     assert conn.args == (7, 2026, 3, "本科批", 2500, 5500, 4000, 3)

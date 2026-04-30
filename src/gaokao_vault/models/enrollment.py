@@ -11,6 +11,7 @@ class EnrollmentPlanItem(BaseModel):
     year: int = Field(ge=2000, le=2100)
     subject_category_id: int | None = None
     batch: str | None = None
+    batch_code: str | None = None
     batch_category: str | None = None
     batch_segment: str | None = None
     major_name: str | None = None
@@ -27,7 +28,13 @@ class EnrollmentPlanItem(BaseModel):
     physical_exam_limit: str | None = None
     single_subject_limit: str | None = None
     adjustment_rule: str | None = None
+    program_type: str | None = None
+    eligibility_requirements: str | None = None
+    physical_exam_or_political_review: str | None = None
+    political_review_requirement: str | None = None
+    service_obligation: str | None = None
     data_source: str | None = None
+    source_url: str | None = None
     source_updated_at: datetime | None = None
     quality_flags: list[str] = Field(default_factory=list)
 

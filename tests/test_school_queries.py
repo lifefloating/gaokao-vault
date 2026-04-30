@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, cast
 
-from gaokao_vault.db.queries.schools import find_schools_by_city, upsert_school
+from gaokao_vault.db.queries.schools import find_school_by_name, find_schools_by_city, upsert_school
 
 
 class _FakeConnection:
@@ -68,3 +68,23 @@ def test_find_schools_by_city_uses_exact_city_filter():
     assert rows == [{"id": 1, "sch_id": 34, "name": "苏州大学", "city": "苏州"}]
     assert "WHERE city = $1" in conn.query
     assert conn.args == ("苏州",)
+
+
+def test_find_school_by_name_uses_exact_name_lookup():
+    class _LookupConnection:
+        def __init__(self) -> None:
+            self.query = ""
+            self.args: tuple[object, ...] = ()
+
+        async def fetchrow(self, query: str, *args: object) -> dict[str, object]:
+            self.query = query
+            self.args = args
+            return {"id": 10001, "sch_id": 10001, "name": "测试大学"}
+
+    conn = _LookupConnection()
+
+    row = asyncio.run(find_school_by_name(cast(Any, conn), "测试大学"))
+
+    assert row == {"id": 10001, "sch_id": 10001, "name": "测试大学"}
+    assert "FROM schools WHERE name = $1" in conn.query
+    assert conn.args == ("测试大学",)

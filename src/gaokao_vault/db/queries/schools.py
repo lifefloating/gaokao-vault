@@ -52,6 +52,11 @@ async def find_school_by_sch_id(conn: asyncpg.Connection, sch_id: int) -> dict |
     return dict(row) if row else None
 
 
+async def find_school_by_name(conn: asyncpg.Connection, name: str) -> dict | None:
+    row = await conn.fetchrow("SELECT id, sch_id, name FROM schools WHERE name = $1 ORDER BY id LIMIT 1", name)
+    return dict(row) if row else None
+
+
 async def find_schools_by_city(conn: asyncpg.Connection, city: str) -> list[dict]:
     rows = await conn.fetch(
         "SELECT id, sch_id, name, city FROM schools WHERE city = $1 ORDER BY id",

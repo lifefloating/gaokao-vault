@@ -26,12 +26,19 @@ def test_upsert_special_enrollment_preserves_strong_base_fields() -> None:
             cast(Any, conn),
             {
                 "enrollment_type": "强基计划",
+                "special_admission_type": "strong_foundation",
+                "province_code": "11",
                 "year": 2025,
                 "title": "测试大学2025年强基计划招生简章",
                 "application_url": "https://bm.chsi.com.cn/jcxkzs/sch/10001",
+                "registration_window": {"start": "2025-04-10", "end": "2025-04-30"},
                 "registration_start": "2025-04-10",
                 "registration_end": "2025-04-30",
+                "shortlist_rule": "按高考成绩确定入围名单",
                 "selection_rule": "按高考成绩确定入围名单",
+                "school_assessment": "学校考核包括笔试和面试",
+                "school_exam_rule": "学校考核包括笔试和面试",
+                "composite_score_formula": "综合成绩=高考成绩*85%+校测成绩*15%",
                 "admission_rule": "按综合成绩择优录取",
                 "eligible_majors": ["数学类", "物理学类"],
                 "quality_flags": [],
@@ -41,7 +48,17 @@ def test_upsert_special_enrollment_preserves_strong_base_fields() -> None:
 
     assert special_id == 66
     assert "special_enrollments" in conn.query
+    assert "special_admission_type" in conn.query
+    assert "province_code" in conn.query
+    assert "registration_window" in conn.query
+    assert "shortlist_rule" in conn.query
+    assert "school_assessment" in conn.query
     assert "application_url" in conn.query
+    assert "school_exam_rule" in conn.query
+    assert "composite_score_formula" in conn.query
     assert "eligible_majors" in conn.query
+    assert "strong_foundation" in conn.args
+    assert "11" in conn.args
+    assert json.dumps({"start": "2025-04-10", "end": "2025-04-30"}, ensure_ascii=False) in conn.args
     assert "https://bm.chsi.com.cn/jcxkzs/sch/10001" in conn.args
     assert json.dumps(["数学类", "物理学类"], ensure_ascii=False) in conn.args

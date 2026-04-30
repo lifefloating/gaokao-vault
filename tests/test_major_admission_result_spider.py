@@ -133,7 +133,9 @@ _ENRICHED_ADMISSION_HTML = """
         <th>最低位次</th>
         <th>平均分</th>
         <th>录取人数</th>
+        <th>计划数</th>
         <th>校区</th>
+        <th>备注</th>
       </tr>
       <tr>
         <td>10200</td>
@@ -147,7 +149,9 @@ _ENRICHED_ADMISSION_HTML = """
         <td>3456</td>
         <td>618</td>
         <td>8</td>
+        <td>9</td>
         <td>主校区</td>
+        <td>军校,须通过政治考核,毕业后服从分配</td>
       </tr>
     </table>
   </body>
@@ -243,12 +247,37 @@ def test_parse_major_admission_result_preserves_group_code_campus_and_quality_fl
     assert items[0]["major_code_raw"] == "080901"
     assert items[0]["campus"] == "主校区"
     assert items[0]["min_rank"] == 3456
+    assert items[0]["plan_count"] == 9
+    assert items[0]["batch_code"] == "early"
     assert items[0]["batch_category"] == "提前批"
     assert items[0]["batch_segment"] == "A段"
+    assert items[0]["program_type"] == "军校"
+    assert items[0]["physical_exam_or_political_review"] == "须通过政治考核"
+    assert items[0]["political_review_requirement"] == "须通过政治考核"
+    assert items[0]["service_obligation"] == "毕业后服从分配"
     assert items[0]["data_source"] == "gaokao.chsi.com.cn"
     assert items[0]["quality_flags"] == []
     process_item.assert_awaited_once()
-    await_args = process_item.await_args
-    assert await_args is not None
-    persisted_item = await_args.args[0]
-    assert persisted_item["major_code_raw"] == "080901"
+
+
+def test_parse_major_admission_result_accepts_generic_table_with_matching_headers() -> None:
+    spider = _make_spider()
+    response = _make_response(
+        _ADMISSION_HTML.replace('class="admission-table"', ""),
+        "https://gaokao.chsi.com.cn/generic-admission",
+        {"school_id": 1, "province_id": 7, "year": 2025},
+    )
+    fake_pool = _FakePool(_FakeMajorLookupConnection())
+
+    with (
+        patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch.object(spider, "_resolve_subject_category", new=AsyncMock(return_value=3)),
+        patch.object(spider, "process_item", new=AsyncMock(return_value="new")) as process_item,
+    ):
+        items = asyncio.run(_collect(spider.parse(response)))
+
+    assert len(items) == 1
+    assert items[0]["major_name_raw"] == "计算机科学与技术"
+    assert items[0]["min_score"] == 612
+    assert items[0]["source_url"] == "https://gaokao.chsi.com.cn/generic-admission"
+    process_item.assert_awaited_once()

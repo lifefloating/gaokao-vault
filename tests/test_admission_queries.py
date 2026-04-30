@@ -31,8 +31,15 @@ def test_upsert_major_admission_result_uses_natural_key() -> None:
                 "year": 2025,
                 "subject_category_id": 3,
                 "batch": "本科批",
+                "batch_code": "regular",
                 "batch_category": "普通批",
                 "batch_segment": None,
+                "program_type": None,
+                "eligibility_requirements": None,
+                "plan_count": 9,
+                "physical_exam_or_political_review": None,
+                "political_review_requirement": None,
+                "service_obligation": None,
                 "school_code_raw": "10200",
                 "school_name_raw": "测试大学",
                 "major_group_code": "01",
@@ -48,8 +55,14 @@ def test_upsert_major_admission_result_uses_natural_key() -> None:
     assert "major_admission_results" in conn.query
     assert "ON CONFLICT (school_id, major_id, province_id, year, subject_category_id, batch)" in conn.query
     assert "major_group_code" in conn.query
+    assert "batch_code" in conn.query
     assert "batch_category" in conn.query
+    assert "program_type" in conn.query
+    assert "plan_count" in conn.query
+    assert "physical_exam_or_political_review" in conn.query
+    assert "political_review_requirement" in conn.query
     assert "10200" in conn.args
+    assert "regular" in conn.args
     assert "普通批" in conn.args
     assert "080901" in conn.args
     assert json.dumps([], ensure_ascii=False) in conn.args

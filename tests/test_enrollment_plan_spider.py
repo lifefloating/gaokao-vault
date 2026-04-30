@@ -122,7 +122,7 @@ _ENRICHED_PLAN_HTML = """
         <td>长春市</td>
         <td>四年</td>
         <td>5800</td>
-        <td>不招色盲,英语单科不低于110分,服从专业调剂</td>
+        <td>公费师范生,须通过政审,毕业后服务期6年,不招色盲,英语单科不低于110分,服从专业调剂</td>
       </tr>
     </table>
   </body>
@@ -186,15 +186,47 @@ def test_parse_enrollment_plan_preserves_rule_fields_and_quality_flags() -> None
     assert items[0]["physical_exam_limit"] == "不招色盲"
     assert items[0]["single_subject_limit"] == "英语单科不低于110分"
     assert items[0]["adjustment_rule"] == "服从专业调剂"
+    assert items[0]["batch_code"] == "early"
     assert items[0]["batch_category"] == "提前批"
     assert items[0]["batch_segment"] == "A段"
+    assert items[0]["program_type"] == "公费师范"
+    assert items[0]["eligibility_requirements"] is None
+    assert items[0]["physical_exam_or_political_review"] == "不招色盲;须通过政审"
+    assert items[0]["political_review_requirement"] == "须通过政审"
+    assert items[0]["service_obligation"] == "毕业后服务期6年"
     assert items[0]["data_source"] == "gaokao.chsi.com.cn"
+    assert items[0]["source_url"] == "https://gaokao.chsi.com.cn/test-plan"
     assert items[0]["quality_flags"] == []
     process_item.assert_awaited_once()
     await_args = process_item.await_args
     assert await_args is not None
     persisted_item = await_args.args[0]
     assert persisted_item["major_group_code"] == "01"
+
+
+def test_parse_enrollment_plan_accepts_generic_table_with_matching_headers() -> None:
+    spider = _make_spider()
+    response = _make_response(
+        _PLAN_HTML.replace('class="plan-table"', ""),
+        "https://gaokao.chsi.com.cn/generic-plan",
+        {"school_id": 1, "province_id": 7, "year": 2025},
+    )
+    fake_pool = _FakePool(AsyncMock())
+
+    with (
+        patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch.object(spider, "_resolve_subject_category", new=AsyncMock(return_value=3)),
+        patch(
+            "gaokao_vault.spiders.enrollment_plan_spider.find_majors_by_name",
+            new=AsyncMock(return_value=[{"id": 12}]),
+        ),
+        patch.object(spider, "process_item", new=AsyncMock(return_value="new")),
+    ):
+        items = asyncio.run(_collect(spider.parse(response)))
+
+    assert len(items) == 1
+    assert items[0]["major_name"] == "计算机科学与技术"
+    assert items[0]["source_url"] == "https://gaokao.chsi.com.cn/generic-plan"
 
 
 def test_start_requests_uses_province_code_for_remote_url_and_local_id_for_storage() -> None:
