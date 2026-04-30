@@ -281,3 +281,41 @@ def test_parse_major_admission_result_accepts_generic_table_with_matching_header
     assert items[0]["min_score"] == 612
     assert items[0]["source_url"] == "https://gaokao.chsi.com.cn/generic-admission"
     process_item.assert_awaited_once()
+
+
+def test_parse_major_admission_result_ignores_generic_layout_tables_without_matching_headers() -> None:
+    spider = _make_spider()
+    html = f"""
+    <html>
+      <body>
+        <table>
+          <tr>
+            <th>栏目</th><th>内容</th><th>操作</th><th>数值</th>
+            <th>排序</th><th>标签</th><th>状态</th>
+          </tr>
+          <tr>
+            <td>计算机科学与技术</td><td>物理类</td><td>本科批</td><td>612</td>
+            <td>3456</td><td>618</td><td>8</td>
+          </tr>
+        </table>
+        {_ADMISSION_HTML.replace('class="admission-table"', "")}
+      </body>
+    </html>
+    """
+    response = _make_response(
+        html,
+        "https://gaokao.chsi.com.cn/generic-admission-with-layout",
+        {"school_id": 1, "province_id": 7, "year": 2025},
+    )
+    fake_pool = _FakePool(_FakeMajorLookupConnection())
+
+    with (
+        patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch.object(spider, "_resolve_subject_category", new=AsyncMock(return_value=3)),
+        patch.object(spider, "process_item", new=AsyncMock(return_value="new")),
+    ):
+        items = asyncio.run(_collect(spider.parse(response)))
+
+    assert len(items) == 1
+    assert items[0]["major_name_raw"] == "计算机科学与技术"
+    assert items[0]["min_score"] == 612

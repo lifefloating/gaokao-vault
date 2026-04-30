@@ -51,8 +51,12 @@ def test_find_candidate_admission_chain_joins_profile_admissions_and_current_pla
     assert "enrollment_plans" in conn.query
     assert "matched_candidates" in conn.query
     assert "current_plans" in conn.query
+    assert "name_match_candidates" in conn.query
     assert "admission_history" in conn.query
     assert "current_plan_options" in conn.query
+    assert "ep.major_id = mc.major_id OR ep.major_name = mc.major_name" not in conn.query
+    assert "HAVING COUNT(DISTINCT major_id) = 1" in conn.query
+    assert "ep.major_id IS NULL" in conn.query
     assert "ep.province_id = $1" in conn.query
     assert "ep.year = $2" in conn.query
     assert "ep.selection_requirement" in conn.query

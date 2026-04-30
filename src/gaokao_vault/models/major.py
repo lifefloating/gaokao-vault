@@ -19,6 +19,7 @@ class MajorSubcategoryItem(BaseModel):
 
 class MajorItem(BaseModel):
     source_id: str | None = None
+    category_id: int | None = None
     subcategory_id: int | None = None
     code: str | None = None
     name: str

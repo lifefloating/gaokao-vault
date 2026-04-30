@@ -159,6 +159,7 @@ CREATE TABLE IF NOT EXISTS major_subcategories (
 CREATE TABLE IF NOT EXISTS majors (
     id              BIGSERIAL PRIMARY KEY,
     source_id       VARCHAR(50),
+    category_id     INTEGER REFERENCES major_categories(id),
     subcategory_id  INTEGER REFERENCES major_subcategories(id),
     code            VARCHAR(20),
     name            VARCHAR(100) NOT NULL,
@@ -175,6 +176,9 @@ CREATE TABLE IF NOT EXISTS majors (
     UNIQUE(code, education_level)
 );
 
+ALTER TABLE majors ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES major_categories(id);
+
+CREATE INDEX IF NOT EXISTS idx_majors_category ON majors(category_id) WHERE category_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_majors_subcategory ON majors(subcategory_id);
 CREATE INDEX IF NOT EXISTS idx_majors_name ON majors USING gin(name gin_trgm_ops);
 
@@ -584,7 +588,7 @@ SELECT
     NULL::TEXT AS subject_restrictions
 FROM majors m
 LEFT JOIN major_subcategories ms ON ms.id = m.subcategory_id
-LEFT JOIN major_categories mc ON mc.id = ms.category_id;
+LEFT JOIN major_categories mc ON mc.id = COALESCE(ms.category_id, m.category_id);
 
 CREATE OR REPLACE VIEW gaokao_source.admission_records_v AS
 SELECT

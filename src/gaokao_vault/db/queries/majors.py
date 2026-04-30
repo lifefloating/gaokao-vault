@@ -36,12 +36,12 @@ async def upsert_major_subcategory(conn: asyncpg.Connection, data: dict) -> int:
 async def upsert_major(conn: asyncpg.Connection, data: dict) -> int:
     row = await conn.fetchrow(
         """
-        INSERT INTO majors (source_id, subcategory_id, code, name, education_level,
+        INSERT INTO majors (source_id, category_id, subcategory_id, code, name, education_level,
             duration, degree, description, employment_rate, graduate_directions,
             content_hash, crawl_task_id)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
         ON CONFLICT (code, education_level) DO UPDATE SET
-            source_id=EXCLUDED.source_id, subcategory_id=EXCLUDED.subcategory_id,
+            source_id=EXCLUDED.source_id, category_id=EXCLUDED.category_id, subcategory_id=EXCLUDED.subcategory_id,
             name=EXCLUDED.name, duration=EXCLUDED.duration, degree=EXCLUDED.degree,
             description=EXCLUDED.description, employment_rate=EXCLUDED.employment_rate,
             graduate_directions=EXCLUDED.graduate_directions,
@@ -49,6 +49,7 @@ async def upsert_major(conn: asyncpg.Connection, data: dict) -> int:
         RETURNING id
         """,
         data.get("source_id"),
+        data.get("category_id"),
         data.get("subcategory_id"),
         data.get("code"),
         data["name"],

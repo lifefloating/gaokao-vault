@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from scrapling.parser import Adaptor
 
 from gaokao_vault.config import DatabaseConfig
-from gaokao_vault.spiders.special_spider import SpecialSpider
+from gaokao_vault.spiders.special_spider import SpecialSpider, _extract_registration_dates
 
 
 def _make_spider() -> SpecialSpider:
@@ -96,6 +96,10 @@ def test_parse_detail_extracts_strong_base_structured_fields() -> None:
     assert items[0]["composite_score_formula"] == "综合成绩=高考成绩*85%+校测成绩*15%"
     assert items[0]["admission_rule"] == "按综合成绩择优录取"
     assert items[0]["quality_flags"] == []
+
+
+def test_extract_registration_dates_returns_empty_values_for_invalid_dates() -> None:
+    assert _extract_registration_dates("报名时间: 2024年13月1日至2024年13月31日") == (None, None)
 
 
 class _Acquire:

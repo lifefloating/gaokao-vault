@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from datetime import datetime
 
 from scrapling.spiders import Request, Response
@@ -11,23 +10,48 @@ from gaokao_vault.db.queries.enrollment import upsert_enrollment_plan
 from gaokao_vault.db.queries.majors import find_majors_by_name
 from gaokao_vault.models.enrollment import EnrollmentPlanItem
 from gaokao_vault.pipeline.admission_rules import (
+    extract_adjustment_rule,
     extract_eligibility_requirements,
+    extract_physical_exam_limit,
     extract_physical_exam_or_political_review,
     extract_political_review_requirement,
     extract_program_type,
     extract_service_obligation,
+    extract_single_subject_limit,
 )
 from gaokao_vault.pipeline.batch_normalizer import normalize_batch
 from gaokao_vault.pipeline.quality import missing_field_flags
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
 from gaokao_vault.spiders.scope import iter_crawl_years, load_province_targets
+from gaokao_vault.spiders.table_candidates import candidate_tables
 
 logger = logging.getLogger(__name__)
 
 YEAR_START = 2020
 YEAR_END = datetime.now().year
 DATA_SOURCE = "gaokao.chsi.com.cn"
+_PLAN_TABLE_HEADERS = (
+    "专业名称",
+    "专业",
+    "科类",
+    "选科",
+    "批次",
+    "计划数",
+    "学制",
+    "学费",
+    "备注",
+    "说明",
+    "院校专业组",
+    "专业组",
+    "专业组代码",
+    "专业代码",
+    "选科要求",
+    "再选科目",
+    "校区",
+    "办学地点",
+    "就读地点",
+)
 
 
 class EnrollmentPlanSpider(BaseGaokaoSpider):
@@ -78,7 +102,7 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
             return
 
         async with (await self._get_pool()).acquire() as conn:
-            for table in _candidate_tables(response, "plan-table"):
+            for table in candidate_tables(response, "plan-table", _PLAN_TABLE_HEADERS):
                 header_map: dict[str, int] | None = None
                 for row in table.css("tr"):
                     headers = [
@@ -115,9 +139,9 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
                     subject_category_id = await self._resolve_subject_category(subject_category_raw or "")
                     plan_count = int(plan_text) if plan_text and plan_text.isdigit() else None
                     batch_info = normalize_batch(batch)
-                    physical_exam_limit = _extract_note_rule(note, ("体检", "色盲", "色弱", "限报", "不招"))
-                    single_subject_limit = _extract_note_rule(note, ("单科", "英语", "数学", "语文"))
-                    adjustment_rule = _extract_note_rule(note, ("调剂",))
+                    physical_exam_limit = extract_physical_exam_limit(note)
+                    single_subject_limit = extract_single_subject_limit(note)
+                    adjustment_rule = extract_adjustment_rule(note)
 
                     data = {
                         "school_id": school_id,
@@ -182,11 +206,6 @@ def _column_index(header_map: dict[str, int] | None, candidates: tuple[str, ...]
     return default
 
 
-def _candidate_tables(response: Response, class_name: str):
-    tables = response.css(f"table.{class_name}")
-    return tables if tables else response.css("table")
-
-
 def _cell_text(cells, index: int) -> str | None:
     if index < 0:
         return None
@@ -194,14 +213,6 @@ def _cell_text(cells, index: int) -> str | None:
         return None
     text = cells[index].css("::text").get("").strip()
     return text or None
-
-
-def _extract_note_rule(note: str | None, keywords: tuple[str, ...]) -> str | None:
-    if not note:
-        return None
-    parts = [part.strip() for part in re.split(r"[\uFF0C,\uFF1B;\u3002]", note) if part.strip()]
-    matches = [part for part in parts if any(keyword in part for keyword in keywords)]
-    return ";".join(matches) if matches else None
 
 
 async def _resolve_major_id(conn, major_name: str) -> int | None:

@@ -24,6 +24,7 @@ from gaokao_vault.pipeline.quality import missing_field_flags
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
 from gaokao_vault.spiders.scope import iter_crawl_years, load_province_targets
+from gaokao_vault.spiders.table_candidates import candidate_tables
 
 if TYPE_CHECKING:
     import asyncpg
@@ -37,6 +38,33 @@ _ADMISSION_RESULT_URL_TEMPLATE = (
 _YEAR_START = 2020
 _YEAR_END = datetime.now().year
 _DATA_SOURCE = "gaokao.chsi.com.cn"
+_ADMISSION_TABLE_HEADERS = (
+    "专业名称",
+    "专业",
+    "科类",
+    "选科",
+    "批次",
+    "最低分",
+    "最低分数",
+    "最低位次",
+    "最低排名",
+    "平均分",
+    "录取人数",
+    "录取数",
+    "计划数",
+    "招生人数",
+    "院校代码",
+    "学校代码",
+    "院校名称",
+    "学校名称",
+    "院校专业组",
+    "专业组",
+    "专业组代码",
+    "专业代码",
+    "校区",
+    "备注",
+    "说明",
+)
 
 
 class MajorAdmissionResultSpider(BaseGaokaoSpider):
@@ -172,7 +200,7 @@ class MajorAdmissionResultSpider(BaseGaokaoSpider):
             return
 
         async with (await self._get_pool()).acquire() as conn:
-            for table in _candidate_tables(response, "admission-table"):
+            for table in candidate_tables(response, "admission-table", _ADMISSION_TABLE_HEADERS):
                 header_map: dict[str, int] | None = None
                 for row in table.css("tr"):
                     headers = [
@@ -297,11 +325,6 @@ def _column_index(header_map: dict[str, int] | None, candidates: tuple[str, ...]
         if candidate in header_map:
             return header_map[candidate]
     return default
-
-
-def _candidate_tables(response: Response, class_name: str):
-    tables = response.css(f"table.{class_name}")
-    return tables if tables else response.css("table")
 
 
 def _cell_text(cells, index: int) -> str | None:

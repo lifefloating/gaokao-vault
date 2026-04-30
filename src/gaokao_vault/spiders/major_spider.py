@@ -151,6 +151,7 @@ class MajorSpider(BaseGaokaoSpider):
                 sid="stealth",
                 meta={
                     "education_level": education_level,
+                    "category_id": category_id,
                     "subcategory_id": sub_id,
                 },
                 **self._STEALTH_KWARGS,
@@ -162,6 +163,7 @@ class MajorSpider(BaseGaokaoSpider):
             return
         meta = response.request.meta
         education_level = meta.get("education_level", "本科")
+        category_id = meta.get("category_id")
         subcategory_id = meta.get("subcategory_id")
 
         items = _parse_api_response(response)
@@ -180,6 +182,7 @@ class MajorSpider(BaseGaokaoSpider):
 
             data = {
                 "source_id": spec_id,
+                "category_id": category_id,
                 "subcategory_id": subcategory_id,
                 "name": name,
                 "code": code,

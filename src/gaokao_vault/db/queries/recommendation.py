@@ -28,10 +28,56 @@ async def find_candidate_admission_chain(
               AND mar.batch = $4
               AND mar.min_rank BETWEEN $5 AND $6
         ),
+        name_match_candidates AS (
+            SELECT
+                school_id,
+                major_name,
+                MIN(major_id) AS major_id
+            FROM matched_candidates
+            GROUP BY school_id, major_name
+            HAVING COUNT(DISTINCT major_id) = 1
+        ),
+        current_plan_matches AS (
+            SELECT
+                ep.*,
+                mc.major_id AS candidate_major_id
+            FROM enrollment_plans ep
+            JOIN matched_candidates mc
+              ON mc.school_id = ep.school_id
+             AND ep.major_id = mc.major_id
+            WHERE ep.province_id = $1
+              AND ep.year = $2
+              AND ep.subject_category_id IS NOT DISTINCT FROM $3
+              AND ep.batch = $4
+            UNION ALL
+            SELECT
+                ep.*,
+                nmc.major_id AS candidate_major_id
+            FROM enrollment_plans ep
+            JOIN name_match_candidates nmc
+              ON nmc.school_id = ep.school_id
+             AND nmc.major_name = ep.major_name
+            WHERE ep.province_id = $1
+              AND ep.year = $2
+              AND ep.subject_category_id IS NOT DISTINCT FROM $3
+              AND ep.batch = $4
+              AND ep.major_id IS NULL
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM enrollment_plans identified_ep
+                  WHERE identified_ep.school_id = ep.school_id
+                    AND identified_ep.province_id = ep.province_id
+                    AND identified_ep.year = ep.year
+                    AND identified_ep.subject_category_id IS NOT DISTINCT FROM ep.subject_category_id
+                    AND identified_ep.batch = ep.batch
+                    AND identified_ep.major_name = ep.major_name
+                    AND identified_ep.major_id IS NOT NULL
+              )
+        ),
         current_plans AS (
             SELECT
                 ep.school_id,
-                mc.major_id,
+                ep.candidate_major_id AS major_id,
                 SUM(ep.plan_count)::INTEGER AS current_plan_count,
                 MIN(ep.major_group_code) AS primary_major_group_code,
                 MIN(ep.major_code_raw) AS primary_major_code_raw,
@@ -75,15 +121,8 @@ async def find_candidate_admission_chain(
                     )
                     ORDER BY ep.major_group_code NULLS LAST, ep.major_code_raw NULLS LAST, ep.major_name NULLS LAST
                 ) AS current_plan_options
-            FROM enrollment_plans ep
-            JOIN matched_candidates mc
-              ON mc.school_id = ep.school_id
-             AND (ep.major_id = mc.major_id OR ep.major_name = mc.major_name)
-            WHERE ep.province_id = $1
-              AND ep.year = $2
-              AND ep.subject_category_id IS NOT DISTINCT FROM $3
-              AND ep.batch = $4
-            GROUP BY ep.school_id, mc.major_id
+            FROM current_plan_matches ep
+            GROUP BY ep.school_id, ep.candidate_major_id
         ),
         admission_history AS (
             SELECT

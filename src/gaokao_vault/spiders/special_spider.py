@@ -213,8 +213,11 @@ def _extract_registration_dates(text: str) -> tuple[date | None, date | None]:
     )
     if match is None:
         return None, None
-    start = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
-    end = date(int(match.group(4)), int(match.group(5)), int(match.group(6)))
+    try:
+        start = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        end = date(int(match.group(4)), int(match.group(5)), int(match.group(6)))
+    except ValueError:
+        return None, None
     return start, end
 
 

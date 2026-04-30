@@ -229,6 +229,42 @@ def test_parse_enrollment_plan_accepts_generic_table_with_matching_headers() -> 
     assert items[0]["source_url"] == "https://gaokao.chsi.com.cn/generic-plan"
 
 
+def test_parse_enrollment_plan_ignores_generic_layout_tables_without_matching_headers() -> None:
+    spider = _make_spider()
+    html = f"""
+    <html>
+      <body>
+        <table>
+          <tr><th>栏目</th><th>内容</th><th>操作</th><th>数量</th></tr>
+          <tr><td>计算机科学与技术</td><td>物理类</td><td>本科批</td><td>5</td></tr>
+        </table>
+        {_PLAN_HTML.replace('class="plan-table"', "")}
+      </body>
+    </html>
+    """
+    response = _make_response(
+        html,
+        "https://gaokao.chsi.com.cn/generic-plan-with-layout",
+        {"school_id": 1, "province_id": 7, "year": 2025},
+    )
+    fake_pool = _FakePool(AsyncMock())
+
+    with (
+        patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch.object(spider, "_resolve_subject_category", new=AsyncMock(return_value=3)),
+        patch(
+            "gaokao_vault.spiders.enrollment_plan_spider.find_majors_by_name",
+            new=AsyncMock(return_value=[{"id": 12}]),
+        ),
+        patch.object(spider, "process_item", new=AsyncMock(return_value="new")),
+    ):
+        items = asyncio.run(_collect(spider.parse(response)))
+
+    assert len(items) == 1
+    assert items[0]["major_name"] == "计算机科学与技术"
+    assert items[0]["plan_count"] == 5
+
+
 def test_start_requests_uses_province_code_for_remote_url_and_local_id_for_storage() -> None:
     spider = _make_spider()
     spider.mode = "incremental"

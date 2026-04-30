@@ -36,3 +36,10 @@ def test_admission_records_view_contains_major_level_evidence_columns() -> None:
         "source_url",
     ):
         assert column_name in SCHEMA_SQL
+
+
+def test_majors_view_falls_back_to_major_category_when_subcategory_is_missing() -> None:
+    assert (
+        "alter table majors add column if not exists category_id integer references major_categories(id)" in SCHEMA_SQL
+    )
+    assert "left join major_categories mc on mc.id = coalesce(ms.category_id, m.category_id)" in SCHEMA_SQL

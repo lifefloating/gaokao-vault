@@ -31,8 +31,20 @@ def extract_political_review_requirement(text: str | None) -> str | None:
     return _extract_rule(text, ("政审", "政治考核", "政治审查"))
 
 
+def extract_physical_exam_limit(text: str | None) -> str | None:
+    return _extract_rule(text, ("体检", "色盲", "色弱", "限报", "不招"))
+
+
+def extract_single_subject_limit(text: str | None) -> str | None:
+    return _extract_rule(text, ("单科", "英语", "数学", "语文"))
+
+
+def extract_adjustment_rule(text: str | None) -> str | None:
+    return _extract_rule(text, ("调剂",))
+
+
 def extract_physical_exam_or_political_review(text: str | None) -> str | None:
-    physical_exam = _extract_rule(text, ("体检", "色盲", "色弱", "限报", "不招"))
+    physical_exam = extract_physical_exam_limit(text)
     political_review = extract_political_review_requirement(text)
     return _join_rules(physical_exam, political_review)
 
