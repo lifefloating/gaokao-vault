@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from scrapling.parser import Adaptor
@@ -31,7 +32,7 @@ class _FakePool:
 class _FakeStartConnection:
     async def fetch(self, query: str, *args: object):
         if "FROM schools ORDER BY id" in query:
-            return [{"id": 1, "sch_id": 34}]
+            return [{"id": 1, "sch_id": 34, "name": "苏州大学"}]
         if "FROM provinces ORDER BY id" in query:
             return [{"id": 7, "name": "吉林", "code": "22"}]
         return []
@@ -52,6 +53,18 @@ def _make_response(html: str, url: str, meta: dict | None = None) -> MagicMock:
     response.status = 200
     response.url = url
     response.css = adaptor.css
+    response.request = MagicMock()
+    response.request.meta = meta or {}
+    response.request.url = url
+    return response
+
+
+def _make_json_response(payload: dict, url: str, meta: dict | None = None) -> MagicMock:
+    response = MagicMock()
+    response.status = 200
+    response.url = url
+    response.text = json.dumps(payload, ensure_ascii=False)
+    response.body = response.text.encode()
     response.request = MagicMock()
     response.request.meta = meta or {}
     response.request.url = url
@@ -265,7 +278,7 @@ def test_parse_enrollment_plan_ignores_generic_layout_tables_without_matching_he
     assert items[0]["plan_count"] == 5
 
 
-def test_start_requests_uses_province_code_for_remote_url_and_local_id_for_storage() -> None:
+def test_start_requests_bootstraps_gaokao_school_name_index() -> None:
     spider = _make_spider()
     spider.mode = "incremental"
 
@@ -275,6 +288,145 @@ def test_start_requests_uses_province_code_for_remote_url_and_local_id_for_stora
 
     assert requests
     assert get_pool.await_count == 1
-    assert requests[0].meta["province_id"] == 7
-    assert requests[0].meta["province_code"] == "22"
-    assert "provinceId=22" in requests[0].url
+    assert requests[0].url == "https://static-data.gaokao.cn/www/2.0/school/name.json"
+    assert requests[0].callback == spider.parse_school_name_index
+    assert requests[0].meta["schools"] == [{"id": 1, "sch_id": 34, "name": "苏州大学"}]
+    assert requests[0].meta["provinces"] == [{"id": 7, "name": "吉林", "code": "22"}]
+
+
+def test_parse_school_name_index_yields_per_school_plan_dictionaries() -> None:
+    spider = _make_spider()
+    response = _make_json_response(
+        {
+            "code": "0000",
+            "data": [
+                {"school_id": "118", "name": "苏州大学"},
+                {"school_id": "999", "name": "不存在大学"},
+            ],
+        },
+        "https://static-data.gaokao.cn/www/2.0/school/name.json",
+        {
+            "schools": [{"id": 1, "sch_id": 34, "name": "苏州大学"}],
+            "provinces": [{"id": 7, "name": "江苏", "code": "32"}],
+            "years": [2025],
+        },
+    )
+
+    requests = asyncio.run(_collect(spider.parse_school_name_index(response)))
+
+    assert len(requests) == 1
+    assert requests[0].url == "https://static-data.gaokao.cn/www/2.0/yk/school/118/dic/specialplan.json"
+    assert requests[0].callback == spider.parse_plan_dictionary
+    assert requests[0].meta == {
+        "school_id": 1,
+        "school_name": "苏州大学",
+        "gaokao_school_id": "118",
+        "provinces": [{"id": 7, "name": "江苏", "code": "32"}],
+        "years": [2025],
+    }
+
+
+def test_parse_plan_dictionary_yields_only_available_static_plan_files() -> None:
+    spider = _make_spider()
+    response = _make_json_response(
+        {"code": "0000", "data": {"year": {"32": [2025, 2024], "11": [2024]}}},
+        "https://static-data.gaokao.cn/www/2.0/yk/school/118/dic/specialplan.json",
+        {
+            "school_id": 1,
+            "school_name": "苏州大学",
+            "gaokao_school_id": "118",
+            "provinces": [{"id": 7, "name": "江苏", "code": "32"}, {"id": 8, "name": "北京", "code": "11"}],
+            "years": [2025],
+        },
+    )
+
+    requests = asyncio.run(_collect(spider.parse_plan_dictionary(response)))
+
+    assert [request.url for request in requests] == [
+        "https://static-data.gaokao.cn/www/2.0/schoolspecialplan/118/2025/32.json"
+    ]
+    assert requests[0].callback == spider.parse
+    assert requests[0].meta == {
+        "school_id": 1,
+        "school_name": "苏州大学",
+        "gaokao_school_id": "118",
+        "province_id": 7,
+        "province_code": "32",
+        "year": 2025,
+    }
+
+
+def test_parse_gaokao_static_enrollment_plan_json() -> None:
+    spider = _make_spider()
+    response = _make_json_response(
+        {
+            "code": "0000",
+            "data": {
+                "2074_14_426217": {
+                    "numFound": 1,
+                    "item": [
+                        {
+                            "school_id": "118",
+                            "special_id": "5647",
+                            "type": "2074",
+                            "batch": "14",
+                            "num": 40,
+                            "province": "32",
+                            "length": "五年",
+                            "tuition": "26400",
+                            "remark": "",
+                            "info": "(与加拿大维多利亚大学合作)(中外合作办学)",
+                            "special_group": "426217",
+                            "sg_name": "(13)",
+                            "sg_info": "首选历史,再选不限",
+                            "spcode": "020301K",
+                            "spname": "金融学(与加拿大维多利亚大学合作)(中外合作办学)",
+                            "sp_name": "金融学",
+                            "local_batch_name": "本科批",
+                            "zslx_name": "普通类",
+                        }
+                    ],
+                }
+            },
+        },
+        "https://static-data.gaokao.cn/www/2.0/schoolspecialplan/118/2025/32.json",
+        {
+            "school_id": 1,
+            "school_name": "苏州大学",
+            "gaokao_school_id": "118",
+            "province_id": 7,
+            "province_code": "32",
+            "year": 2025,
+        },
+    )
+    fake_pool = _FakePool(AsyncMock())
+
+    with (
+        patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
+        patch.object(spider, "_resolve_subject_category", new=AsyncMock(return_value=4)),
+        patch(
+            "gaokao_vault.spiders.enrollment_plan_spider.find_majors_by_name",
+            new=AsyncMock(return_value=[{"id": 88}]),
+        ),
+        patch.object(spider, "process_item", new=AsyncMock(return_value="new")) as process_item,
+    ):
+        items = asyncio.run(_collect(spider.parse(response)))
+
+    assert len(items) == 1
+    assert items[0]["school_id"] == 1
+    assert items[0]["province_id"] == 7
+    assert items[0]["year"] == 2025
+    assert items[0]["subject_category_id"] == 4
+    assert items[0]["batch"] == "本科批"
+    assert items[0]["major_name"] == "金融学(与加拿大维多利亚大学合作)(中外合作办学)"
+    assert items[0]["major_id"] == 88
+    assert items[0]["plan_count"] == 40
+    assert items[0]["duration"] == "五年"
+    assert items[0]["tuition"] == "26400"
+    assert items[0]["note"] == "(与加拿大维多利亚大学合作)(中外合作办学)"
+    assert items[0]["major_group_code"] == "(13)"
+    assert items[0]["major_code_raw"] == "020301K"
+    assert items[0]["selection_requirement"] == "首选历史,再选不限"
+    assert items[0]["data_source"] == "gaokao.cn"
+    assert items[0]["source_url"] == "https://static-data.gaokao.cn/www/2.0/schoolspecialplan/118/2025/32.json"
+    process_item.assert_awaited_once()

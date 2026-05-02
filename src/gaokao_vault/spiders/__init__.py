@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from gaokao_vault.spiders.base import BaseGaokaoSpider
 from gaokao_vault.spiders.charter_spider import CharterSpider
+from gaokao_vault.spiders.dxsbb_admission_result_spider import DxsbbAdmissionResultSpider
 from gaokao_vault.spiders.enrollment_plan_spider import EnrollmentPlanSpider
 from gaokao_vault.spiders.interpretation_spider import InterpretationSpider
 from gaokao_vault.spiders.major_admission_result_spider import MajorAdmissionResultSpider
@@ -16,6 +19,7 @@ from gaokao_vault.spiders.timeline_spider import TimelineSpider
 __all__ = [
     "BaseGaokaoSpider",
     "CharterSpider",
+    "DxsbbAdmissionResultSpider",
     "EnrollmentPlanSpider",
     "InterpretationSpider",
     "MajorAdmissionResultSpider",

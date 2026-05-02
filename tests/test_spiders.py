@@ -7,6 +7,7 @@ from gaokao_vault.scheduler.orchestrator import SPIDER_MAP
 from gaokao_vault.spiders import (
     BaseGaokaoSpider,
     CharterSpider,
+    DxsbbAdmissionResultSpider,
     EnrollmentPlanSpider,
     InterpretationSpider,
     MajorAdmissionResultSpider,
@@ -38,6 +39,7 @@ class TestSpiderStructure:
             SchoolSatisfactionSpider,
             MajorSatisfactionSpider,
             InterpretationSpider,
+            DxsbbAdmissionResultSpider,
         ]
         for cls in spiders:
             assert hasattr(cls, "name"), f"{cls.__name__} missing 'name'"

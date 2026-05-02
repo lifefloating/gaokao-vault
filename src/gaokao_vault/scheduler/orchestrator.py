@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
+from typing import Any
 
 import asyncpg
 
@@ -11,6 +13,7 @@ from gaokao_vault.constants import PHASE2_TYPES, PHASE3_TYPES, TaskType
 from gaokao_vault.scheduler.task_manager import TaskManager
 from gaokao_vault.spiders.base import BaseGaokaoSpider
 from gaokao_vault.spiders.charter_spider import CharterSpider
+from gaokao_vault.spiders.dxsbb_admission_result_spider import DxsbbAdmissionResultSpider
 from gaokao_vault.spiders.enrollment_plan_spider import EnrollmentPlanSpider
 from gaokao_vault.spiders.interpretation_spider import InterpretationSpider
 from gaokao_vault.spiders.major_admission_result_spider import MajorAdmissionResultSpider
@@ -25,6 +28,7 @@ from gaokao_vault.spiders.special_spider import SpecialSpider
 from gaokao_vault.spiders.timeline_spider import TimelineSpider
 
 logger = logging.getLogger(__name__)
+_TIMEOUT_PAUSE_DRAIN_SECONDS = 30.0
 
 
 def _is_checkpoint_error(exc: BaseException) -> bool:
@@ -46,6 +50,7 @@ SPIDER_MAP: dict[str, type[BaseGaokaoSpider]] = {
     TaskType.SCORE_SEGMENTS: ScoreSegmentSpider,
     TaskType.ENROLLMENT_PLANS: EnrollmentPlanSpider,
     TaskType.MAJOR_ADMISSION_RESULTS: MajorAdmissionResultSpider,
+    TaskType.DXSBB_ADMISSION_RESULTS: DxsbbAdmissionResultSpider,
     TaskType.CHARTERS: CharterSpider,
     TaskType.SPECIAL: SpecialSpider,
     TaskType.SCHOOL_SATISFACTION: SchoolSatisfactionSpider,
@@ -149,15 +154,18 @@ class Orchestrator:
             await self.task_manager.finish_task(task_id, stats, error=str(exc))
             return stats
 
+        stream_task: asyncio.Task[None] | None = None
+
         try:
             logger.info("Starting spider %s (timeout=%ds)", task_type, timeout)
             # Use spider.stream() — a native async interface that runs in the
             # current event loop.  On timeout spider.pause() gracefully shuts
             # down the crawl (saves checkpoint, closes browser sessions).
-            await asyncio.wait_for(
-                self._run_spider_stream(spider),
-                timeout=timeout,
-            )
+            stream_task = asyncio.create_task(self._run_spider_stream(spider), name=f"spider:{task_type}")
+            done, _pending = await asyncio.wait({stream_task}, timeout=timeout)
+            if stream_task not in done:
+                return await self._handle_spider_timeout(task_id, task_type, spider, stream_task, timeout)
+            await stream_task
             stats = spider._stats
             items_scraped = stats.get("new", 0) + stats.get("updated", 0)
             logger.info(
@@ -165,18 +173,9 @@ class Orchestrator:
                 task_type,
                 items_scraped,
             )
-        except asyncio.TimeoutError:
-            logger.warning("Spider %s timed out after %ds, calling pause()", task_type, timeout)
-            try:
-                spider.pause()
-            except Exception:
-                logger.exception("Spider %s pause() failed after timeout", task_type)
-            stats = spider._stats
-            stats["failed"] = max(stats.get("failed", 0), 1)
-            await self.task_manager.finish_task(task_id, stats, error=f"Timed out after {timeout}s")
-            return stats
         except asyncio.CancelledError:
             logger.warning("Spider %s was cancelled, marking task as failed", task_type)
+            await self._cancel_spider_stream(task_type, spider, stream_task)
             stats = spider._stats
             stats["failed"] = max(stats.get("failed", 0), 1)
             await self.task_manager.finish_task(task_id, stats, error="Cancelled")
@@ -189,6 +188,61 @@ class Orchestrator:
         else:
             await self.task_manager.finish_task(task_id, stats)
             return stats
+
+    async def _handle_spider_timeout(
+        self,
+        task_id: int,
+        task_type: str,
+        spider: Any,
+        stream_task: asyncio.Task[None],
+        timeout: int,
+    ) -> dict[str, int]:
+        logger.warning("Spider %s timed out after %ds, calling pause()", task_type, timeout)
+        try:
+            spider.pause()
+        except Exception:
+            logger.exception("Spider %s pause() failed after timeout", task_type)
+
+        await self._drain_timed_out_spider(task_type, stream_task)
+
+        stats = spider._stats
+        stats["failed"] = max(stats.get("failed", 0), 1)
+        await self.task_manager.finish_task(task_id, stats, error=f"Timed out after {timeout}s")
+        return stats
+
+    @staticmethod
+    async def _drain_timed_out_spider(task_type: str, stream_task: asyncio.Task[None]) -> None:
+        if stream_task.done():
+            return
+
+        try:
+            await asyncio.wait_for(stream_task, timeout=_TIMEOUT_PAUSE_DRAIN_SECONDS)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Spider %s did not stop within %.0fs after pause(), cancelling stream task",
+                task_type,
+                _TIMEOUT_PAUSE_DRAIN_SECONDS,
+            )
+            stream_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await stream_task
+        except Exception:
+            logger.exception("Spider %s stream failed while stopping after timeout", task_type)
+
+    @staticmethod
+    async def _cancel_spider_stream(
+        task_type: str,
+        spider: Any,
+        stream_task: asyncio.Task[None] | None,
+    ) -> None:
+        if stream_task is None or stream_task.done():
+            return
+
+        with contextlib.suppress(Exception):
+            spider.pause()
+        stream_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await stream_task
 
     @staticmethod
     async def _run_spider_stream(spider) -> None:

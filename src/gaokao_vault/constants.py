@@ -14,6 +14,7 @@ class TaskType(str, Enum):
     MAJORS = "majors"
     SCHOOL_MAJORS = "school_majors"
     MAJOR_SATISFACTION = "major_satisfaction"
+    DXSBB_ADMISSION_RESULTS = "dxsbb_admission_results"
     INTERPRETATIONS = "interpretations"
     SCORE_LINES = "score_lines"
     SCORE_SEGMENTS = "score_segments"
@@ -36,6 +37,7 @@ PHASE3_TYPES = [
     TaskType.SCORE_SEGMENTS,
     TaskType.ENROLLMENT_PLANS,
     TaskType.MAJOR_ADMISSION_RESULTS,
+    TaskType.DXSBB_ADMISSION_RESULTS,
     TaskType.CHARTERS,
     TaskType.SPECIAL,
     TaskType.SCHOOL_SATISFACTION,
