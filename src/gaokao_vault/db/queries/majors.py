@@ -101,6 +101,47 @@ async def find_majors_by_name(conn: asyncpg.Connection, name: str) -> list[dict]
     return [dict(row) for row in rows]
 
 
+async def find_school_major_id_by_name(
+    conn: asyncpg.Connection,
+    school_id: int,
+    major_name: str,
+    *,
+    education_level: str | None = None,
+    fallback_to_unique_major: bool = False,
+) -> int | None:
+    rows = await conn.fetch(
+        """
+        SELECT m.id
+        FROM school_majors sm
+        JOIN majors m ON m.id = sm.major_id
+        WHERE sm.school_id = $1
+          AND m.name = $2
+          AND ($3::text IS NULL OR m.education_level = $3)
+        ORDER BY m.id
+        """,
+        school_id,
+        major_name,
+        education_level,
+    )
+    if len(rows) == 1:
+        return rows[0]["id"]
+    if len(rows) > 1 or not fallback_to_unique_major:
+        return None
+
+    rows = await conn.fetch(
+        """
+        SELECT id
+        FROM majors
+        WHERE name = $1
+          AND ($2::text IS NULL OR education_level = $2)
+        ORDER BY id
+        """,
+        major_name,
+        education_level,
+    )
+    return rows[0]["id"] if len(rows) == 1 else None
+
+
 async def upsert_major_satisfaction(conn: asyncpg.Connection, data: dict) -> int:
     row = await conn.fetchrow(
         """

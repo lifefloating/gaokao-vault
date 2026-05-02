@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
 from typing import Any
@@ -12,6 +11,7 @@ from gaokao_vault.db.queries.schools import upsert_school_satisfaction
 from gaokao_vault.models.school import SchoolSatisfactionItem
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
+from gaokao_vault.spiders.response_utils import response_json
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class SchoolSatisfactionSpider(BaseGaokaoSpider):
             return
         school_id = response.request.meta.get("school_id")
 
-        result = _response_json(response)
+        result = response_json(response)
         if result is None:
             logger.debug("Invalid JSON response for school_id=%s", school_id)
             return
@@ -85,27 +85,6 @@ class SchoolSatisfactionSpider(BaseGaokaoSpider):
 
 def _snapshot_year() -> int:
     return datetime.now().year
-
-
-def _response_json(response: Response) -> dict[str, Any] | None:
-    text = _response_text(response)
-    if not text:
-        return None
-    try:
-        result = json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    return result if isinstance(result, dict) else None
-
-
-def _response_text(response: Response) -> str:
-    text = getattr(response, "text", "")
-    if isinstance(text, str) and text:
-        return text
-    body = getattr(response, "body", b"")
-    if isinstance(body, bytes):
-        return body.decode("utf-8", errors="ignore")
-    return ""
 
 
 def _rating_value(entry: dict[str, Any] | None, key: str) -> Any:

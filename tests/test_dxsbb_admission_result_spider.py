@@ -40,11 +40,11 @@ class _FakeConnection:
     async def fetch(self, query: str, *args):
         if "FROM provinces" in query:
             return [{"id": 14, "name": "山西"}]
-        if "FROM school_majors" in query and args == (102, "英语"):
+        if "FROM school_majors" in query and args == (102, "英语", None):
             return [{"id": 31}]
-        if "FROM school_majors" in query and args == (102, "书法学"):
+        if "FROM school_majors" in query and args == (102, "书法学", None):
             return [{"id": 32}]
-        if "FROM majors" in query and args == ("历史学",):
+        if "FROM majors" in query and args == ("历史学", None):
             return [{"id": 40}]
         return []
 

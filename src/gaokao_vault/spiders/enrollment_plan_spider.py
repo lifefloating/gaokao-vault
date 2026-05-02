@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
 from typing import Any, ClassVar
@@ -26,6 +25,7 @@ from gaokao_vault.pipeline.batch_normalizer import normalize_batch
 from gaokao_vault.pipeline.quality import missing_field_flags
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
+from gaokao_vault.spiders.response_utils import response_json
 from gaokao_vault.spiders.scope import iter_crawl_years, load_province_targets
 from gaokao_vault.spiders.table_candidates import candidate_tables
 
@@ -120,7 +120,7 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
         if response.status == 404 or response.request is None:
             return
 
-        result = _response_json(response)
+        result = response_json(response)
         if result is None or result.get("code") != "0000":
             logger.debug("Invalid gaokao school name index url=%s", response.url)
             return
@@ -151,7 +151,7 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
         if response.status == 404 or response.request is None:
             return
 
-        result = _response_json(response)
+        result = response_json(response)
         if result is None or result.get("code") != "0000":
             logger.debug("Invalid gaokao plan dictionary url=%s", response.url)
             return
@@ -195,7 +195,7 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
         if not school_id or not province_id or not year:
             return
 
-        result = _response_json(response)
+        result = response_json(response)
         if result is not None:
             async for item in self._parse_static_plan_json(response, result):
                 yield item
@@ -404,27 +404,6 @@ def _cell_text(cells, index: int) -> str | None:
         return None
     text = cells[index].css("::text").get("").strip()
     return text or None
-
-
-def _response_json(response: Response) -> dict[str, Any] | None:
-    text = _response_text(response)
-    if not text:
-        return None
-    try:
-        result = json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    return result if isinstance(result, dict) else None
-
-
-def _response_text(response: Response) -> str:
-    text = getattr(response, "text", "")
-    if isinstance(text, str) and text:
-        return text
-    body = getattr(response, "body", b"")
-    if isinstance(body, bytes):
-        return body.decode("utf-8", errors="ignore")
-    return ""
 
 
 def _build_gaokao_school_index(rows: Any) -> dict[str, str]:

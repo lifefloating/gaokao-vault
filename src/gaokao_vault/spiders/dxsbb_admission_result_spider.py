@@ -10,6 +10,7 @@ from scrapling.spiders import Request, Response
 
 from gaokao_vault.constants import TaskType
 from gaokao_vault.db.queries.admission import upsert_major_admission_result
+from gaokao_vault.db.queries.majors import find_school_major_id_by_name
 from gaokao_vault.models.admission import MajorAdmissionResultItem
 from gaokao_vault.pipeline.batch_normalizer import normalize_batch
 from gaokao_vault.pipeline.quality import missing_field_flags
@@ -151,7 +152,12 @@ class DxsbbAdmissionResultSpider(BaseGaokaoSpider):
         if province_id is None:
             return None
 
-        major_id = await _find_school_major_id(conn, school["id"], major_name)
+        major_id = await find_school_major_id_by_name(
+            conn,
+            school["id"],
+            major_name,
+            fallback_to_unique_major=True,
+        )
         if major_id is None:
             return None
 
@@ -292,35 +298,6 @@ async def _find_school_by_name(conn: asyncpg.Connection, school_name: str) -> di
 async def _load_province_map(conn: asyncpg.Connection) -> dict[str, int]:
     rows = await conn.fetch("SELECT id, name FROM provinces")
     return {_normalize_province_name(row["name"]): row["id"] for row in rows}
-
-
-async def _find_school_major_id(conn: asyncpg.Connection, school_id: int, major_name: str) -> int | None:
-    rows = await conn.fetch(
-        """
-        SELECT m.id
-        FROM school_majors sm
-        JOIN majors m ON m.id = sm.major_id
-        WHERE sm.school_id = $1 AND m.name = $2
-        ORDER BY m.id
-        """,
-        school_id,
-        major_name,
-    )
-    if len(rows) == 1:
-        return rows[0]["id"]
-    if len(rows) > 1:
-        return None
-
-    rows = await conn.fetch(
-        """
-        SELECT id
-        FROM majors
-        WHERE name = $1
-        ORDER BY id
-        """,
-        major_name,
-    )
-    return rows[0]["id"] if len(rows) == 1 else None
 
 
 async def _official_record_exists(conn: asyncpg.Connection, data: dict) -> bool:

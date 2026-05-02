@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import json
 import logging
-from typing import Any
 
 from scrapling.spiders import Request, Response
 
 from gaokao_vault.constants import BASE_URL, TaskType
-from gaokao_vault.db.queries.majors import upsert_major_satisfaction
+from gaokao_vault.db.queries.majors import find_school_major_id_by_name, upsert_major_satisfaction
 from gaokao_vault.models.major import MajorSatisfactionItem
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
+from gaokao_vault.spiders.response_utils import response_json
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +45,7 @@ class MajorSatisfactionSpider(BaseGaokaoSpider):
         if not school_id:
             return
 
-        result = _response_json(response)
+        result = response_json(response)
         if result is None:
             logger.debug("Invalid appraisal JSON school_id=%s url=%s", school_id, response.url)
             return
@@ -90,7 +89,12 @@ class MajorSatisfactionSpider(BaseGaokaoSpider):
                 if not major_name:
                     continue
 
-                major_id = await _find_school_major_id(conn, school_id, major_name, education_level)
+                major_id = await find_school_major_id_by_name(
+                    conn,
+                    school_id,
+                    major_name,
+                    education_level=education_level,
+                )
                 if major_id is None:
                     logger.debug(
                         "Skipping unmatched satisfaction row school_id=%s education_level=%s major_name=%s url=%s",
@@ -135,47 +139,6 @@ def _safe_str(val) -> str | None:
     return text or None
 
 
-def _response_json(response: Response) -> dict[str, Any] | None:
-    text = _response_text(response)
-    if not text:
-        return None
-    try:
-        result = json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    return result if isinstance(result, dict) else None
-
-
-def _response_text(response: Response) -> str:
-    text = getattr(response, "text", "")
-    if isinstance(text, str) and text:
-        return text
-    body = getattr(response, "body", b"")
-    if isinstance(body, bytes):
-        return body.decode("utf-8", errors="ignore")
-    return ""
-
-
 def _hidden_value(cell) -> str | None:
     value = cell.css("input[type=hidden]::attr(value)").get()
     return value.strip() if value else None
-
-
-async def _find_school_major_id(conn, school_id: int, major_name: str, education_level: str) -> int | None:
-    rows = await conn.fetch(
-        """
-        SELECT m.id
-        FROM school_majors sm
-        JOIN majors m ON m.id = sm.major_id
-        WHERE sm.school_id = $1
-          AND m.name = $2
-          AND m.education_level = $3
-        ORDER BY m.id
-        """,
-        school_id,
-        major_name,
-        education_level,
-    )
-    if len(rows) != 1:
-        return None
-    return rows[0]["id"]
