@@ -16,7 +16,7 @@ def test_response_text_prefers_text_attribute() -> None:
 def test_response_json_decodes_body_when_text_is_empty() -> None:
     response = MagicMock()
     response.text = ""
-    response.body = '{"ok": true}'.encode()
+    response.body = b'{"ok": true}'
 
     assert response_json(response) == {"ok": True}
 

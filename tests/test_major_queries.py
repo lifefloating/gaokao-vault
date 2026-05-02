@@ -19,9 +19,7 @@ class _FakeConnection:
 def test_find_school_major_id_by_name_filters_by_education_level() -> None:
     conn = _FakeConnection([[{"id": 31}]])
 
-    major_id = asyncio.run(
-        find_school_major_id_by_name(cast(Any, conn), 102, "法学", education_level="本科")
-    )
+    major_id = asyncio.run(find_school_major_id_by_name(cast(Any, conn), 102, "法学", education_level="本科"))
 
     assert major_id == 31
     assert conn.calls[0][1] == (102, "法学", "本科")
@@ -39,9 +37,7 @@ def test_find_school_major_id_by_name_returns_none_for_ambiguous_school_match() 
 def test_find_school_major_id_by_name_can_fallback_to_unique_global_major() -> None:
     conn = _FakeConnection([[], [{"id": 88}]])
 
-    major_id = asyncio.run(
-        find_school_major_id_by_name(cast(Any, conn), 102, "金融学", fallback_to_unique_major=True)
-    )
+    major_id = asyncio.run(find_school_major_id_by_name(cast(Any, conn), 102, "金融学", fallback_to_unique_major=True))
 
     assert major_id == 88
     assert len(conn.calls) == 2
