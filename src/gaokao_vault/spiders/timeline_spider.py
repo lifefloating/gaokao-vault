@@ -229,13 +229,15 @@ def _clean_text(text: str) -> str:
 
 
 def _timeline_section_year(text: str) -> int | None:
-    if "高考志愿填报时间" not in text:
+    if "志愿填报时间" not in text or ":" in text or "至" in text:
         return None
     match = re.search(r"(20\d{2})", text)
     return int(match.group(1)) if match else None
 
 
 def _timeline_rows_from_table(table, year: int):
+    # DXSBB articles sometimes put regular and collection rows in separate tables.
+    # Keep the collection marker scoped to the current table to avoid leaking it into later regular tables.
     collection_mode = False
     for row in table.css("tr"):
         cells = row.css("td, th")
