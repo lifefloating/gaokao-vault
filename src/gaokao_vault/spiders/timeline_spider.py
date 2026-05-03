@@ -149,49 +149,50 @@ class TimelineSpider(BaseGaokaoSpider):
         if not province_id or not year:
             return
 
-        collection_mode = False
-        for row in response.css("#article .content table tr"):
-            cells = row.css("td, th")
-            cell_texts = [_node_text(cell) for cell in cells]
-            if len(cell_texts) < 2:
-                if cell_texts:
-                    collection_mode = "征集" in cell_texts[0]
+        nodes = list(
+            response.css("#article .content h2, #article .content h3, #article .content p, #article .content table")
+        )
+        has_year_sections = any(_timeline_section_year(_node_text(node)) is not None for node in nodes)
+        current_year = int(year)
+        in_year_section = not has_year_sections
+
+        for node in nodes:
+            node_text = _node_text(node)
+            section_year = _timeline_section_year(node_text)
+            if section_year is not None:
+                current_year = section_year
+                in_year_section = True
+                continue
+            if not in_year_section:
                 continue
 
-            batch = cell_texts[0]
-            time_text = cell_texts[1]
-            if not batch or batch in {"批次", "类别", "科类", "填报阶段"} or "时段" in time_text:
-                continue
+            rows = (
+                _timeline_rows_from_table(node, current_year)
+                if node.css("tr")
+                else _timeline_rows_from_text(node_text, current_year)
+            )
+            for batch, start_time, end_time in rows:
+                data = {
+                    "province_id": province_id,
+                    "year": current_year,
+                    "batch": batch,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                }
 
-            time_range = _parse_dxsbb_time_range(time_text, int(year))
-            if time_range is None:
-                continue
-
-            start_time, end_time = time_range
-            if collection_mode and "征集" not in batch:
-                batch = f"{batch}(征集志愿)"
-
-            data = {
-                "province_id": province_id,
-                "year": year,
-                "batch": batch,
-                "start_time": start_time,
-                "end_time": end_time,
-            }
-
-            item = validate_item(TimelineItem, data)
-            if item:
-                yield item
-                await self.process_item(
-                    item,
-                    entity_type="timelines",
-                    unique_keys={
-                        "province_id": province_id,
-                        "year": year,
-                        "batch": batch,
-                    },
-                    upsert_fn=upsert_timeline,
-                )
+                item = validate_item(TimelineItem, data)
+                if item:
+                    yield item
+                    await self.process_item(
+                        item,
+                        entity_type="timelines",
+                        unique_keys={
+                            "province_id": province_id,
+                            "year": current_year,
+                            "batch": batch,
+                        },
+                        upsert_fn=upsert_timeline,
+                    )
 
 
 def _parse_datetime(text: str) -> datetime | None:
@@ -227,6 +228,54 @@ def _clean_text(text: str) -> str:
     return re.sub(r"\s+", "", text.replace("\xa0", " ").replace("\uff1a", ":")).strip()
 
 
+def _timeline_section_year(text: str) -> int | None:
+    if "志愿填报时间" not in text or ":" in text or "至" in text:
+        return None
+    match = re.search(r"(20\d{2})", text)
+    return int(match.group(1)) if match else None
+
+
+def _timeline_rows_from_table(table, year: int):
+    # DXSBB articles sometimes put regular and collection rows in separate tables.
+    # Keep the collection marker scoped to the current table to avoid leaking it into later regular tables.
+    collection_mode = False
+    for row in table.css("tr"):
+        cells = row.css("td, th")
+        cell_texts = [_node_text(cell) for cell in cells]
+        if len(cell_texts) < 2:
+            if cell_texts:
+                collection_mode = "征集" in cell_texts[0]
+            continue
+
+        batch = cell_texts[0]
+        time_text = cell_texts[1]
+        if not batch or batch in {"批次", "类别", "科类", "填报阶段"} or "时段" in time_text:
+            continue
+
+        time_range = _parse_dxsbb_time_range(time_text, year)
+        if time_range is None:
+            continue
+
+        if collection_mode and "征集" not in batch:
+            batch = f"{batch}(征集志愿)"
+        yield batch, time_range[0], time_range[1]
+
+
+def _timeline_rows_from_text(text: str, year: int):
+    for sentence in re.split(r"[\u3002\n\uff1b;]", text):
+        for match in re.finditer(
+            r"(?P<batch>[^:\uff1a\u3002\uff1b;]*?)(?:志愿填报时间|填报时间)[:\uff1a](?P<time>[^\u3002\uff1b;]+)",
+            sentence,
+        ):
+            batch = _clean_text(match.group("batch")).removeprefix("其中")
+            if not batch or "高考" in batch:
+                continue
+            time_range = _parse_dxsbb_time_range(match.group("time"), year)
+            if time_range is None:
+                continue
+            yield batch, time_range[0], time_range[1]
+
+
 def _parse_dxsbb_time_range(text: str, year: int) -> tuple[datetime, datetime] | None:
     value = _clean_text(text)
     match = re.search(
@@ -235,7 +284,7 @@ def _parse_dxsbb_time_range(text: str, year: int) -> tuple[datetime, datetime] |
         r"(?P<start_hour>\d{1,2})(?::(?P<start_minute>\d{1,2}))?"
         r"(?:至|到|-|\u2014|\uff0d|~|\uff5e)"
         r"(?:(?P<end_year>\d{4})年)?"
-        r"(?:(?P<end_month>\d{1,2})月(?:(?P<end_day>\d{1,2})日?)?)?"
+        r"(?:(?P<end_month>\d{1,2})月(?P<end_day>\d{1,2})日?|(?P<end_day_only>\d{1,2})日)?"
         r"(?P<end_hour>\d{1,2})(?::(?P<end_minute>\d{1,2}))?",
         value,
     )
@@ -247,7 +296,7 @@ def _parse_dxsbb_time_range(text: str, year: int) -> tuple[datetime, datetime] |
     start_day = int(match.group("start_day"))
     end_year = int(match.group("end_year") or start_year)
     end_month = int(match.group("end_month") or start_month)
-    end_day = int(match.group("end_day") or start_day)
+    end_day = int(match.group("end_day") or match.group("end_day_only") or start_day)
 
     try:
         return (

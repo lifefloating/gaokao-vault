@@ -456,7 +456,7 @@ CREATE TABLE IF NOT EXISTS volunteer_timelines (
     id              BIGSERIAL PRIMARY KEY,
     province_id     INTEGER NOT NULL REFERENCES provinces(id),
     year            SMALLINT NOT NULL,
-    batch           VARCHAR(50) NOT NULL,
+    batch           VARCHAR(255) NOT NULL,
     start_time      TIMESTAMPTZ,
     end_time        TIMESTAMPTZ,
     note            VARCHAR(500),
@@ -468,6 +468,8 @@ CREATE TABLE IF NOT EXISTS volunteer_timelines (
 );
 
 CREATE INDEX IF NOT EXISTS idx_timelines_province_year ON volunteer_timelines(province_id, year);
+
+ALTER TABLE volunteer_timelines ALTER COLUMN batch TYPE VARCHAR(255);
 
 DROP TRIGGER IF EXISTS update_volunteer_timelines_updated_at ON volunteer_timelines;
 CREATE TRIGGER update_volunteer_timelines_updated_at BEFORE UPDATE ON volunteer_timelines
