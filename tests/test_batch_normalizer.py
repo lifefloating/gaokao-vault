@@ -18,3 +18,15 @@ from gaokao_vault.pipeline.batch_normalizer import BatchInfo, normalize_batch
 )
 def test_normalize_batch_classifies_early_and_regular_batches(raw_batch: str, expected: BatchInfo) -> None:
     assert normalize_batch(raw_batch) == expected
+
+
+@pytest.mark.parametrize(
+    "raw_batch",
+    [
+        "强基计划",
+        "强基计划招生简章",
+        "强基计划录取标准",
+    ],
+)
+def test_normalize_batch_keeps_strong_foundation_out_of_batch_filtering(raw_batch: str) -> None:
+    assert normalize_batch(raw_batch) == BatchInfo(code=None, category=None, segment=None)
