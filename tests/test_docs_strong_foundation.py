@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 DOC_PATH = Path("docs/strong-foundation.md")
 MKDOCS_YML = Path("mkdocs.yml")
 
