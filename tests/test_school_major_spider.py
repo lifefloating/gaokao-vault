@@ -93,6 +93,19 @@ def _make_response(html: str, url: str, meta: dict | None = None) -> MagicMock:
     return response
 
 
+def _expected_school_major_item(school_id: int, major_id: int, display_order: int = 1) -> dict[str, object]:
+    return {
+        "school_id": school_id,
+        "major_id": major_id,
+        "school_major_display_order": display_order,
+        "major_strength_rank": None,
+        "major_strength_score": None,
+        "major_strength_tier": None,
+        "is_featured_major": False,
+        "strength_evidence": [],
+    }
+
+
 async def _collect(async_gen) -> list:
     items = []
     async for item in async_gen:
@@ -149,7 +162,7 @@ def test_parse_keeps_existing_code_match_path():
     ):
         items = asyncio.run(_collect(spider.parse(response)))
 
-    assert items == [{"school_id": 7, "major_id": 9, "school_major_rank": 1, "is_featured_major": True}]
+    assert items == [_expected_school_major_item(school_id=7, major_id=9)]
 
 
 def test_parse_falls_back_to_exact_name_when_code_is_missing():
@@ -183,7 +196,7 @@ def test_parse_falls_back_to_exact_name_when_code_is_missing():
     ):
         items = asyncio.run(_collect(spider.parse(response)))
 
-    assert items == [{"school_id": 8, "major_id": 12, "school_major_rank": 1, "is_featured_major": True}]
+    assert items == [_expected_school_major_item(school_id=8, major_id=12)]
 
 
 def test_parse_tries_href_code_when_data_code_does_not_match():
@@ -216,7 +229,7 @@ def test_parse_tries_href_code_when_data_code_does_not_match():
     ):
         items = asyncio.run(_collect(spider.parse(response)))
 
-    assert items == [{"school_id": 10, "major_id": 15, "school_major_rank": 1, "is_featured_major": True}]
+    assert items == [_expected_school_major_item(school_id=10, major_id=15)]
 
 
 def test_parse_resolves_by_source_id_from_professional_page():
@@ -250,7 +263,7 @@ def test_parse_resolves_by_source_id_from_professional_page():
     ):
         items = asyncio.run(_collect(spider.parse(response)))
 
-    assert items == [{"school_id": 11, "major_id": 21, "school_major_rank": 1, "is_featured_major": True}]
+    assert items == [_expected_school_major_item(school_id=11, major_id=21)]
 
 
 def test_parse_uses_bare_path_href_code_when_data_code_is_missing():
@@ -280,10 +293,10 @@ def test_parse_uses_bare_path_href_code_when_data_code_is_missing():
     ):
         items = asyncio.run(_collect(spider.parse(response)))
 
-    assert items == [{"school_id": 11, "major_id": 16, "school_major_rank": 1, "is_featured_major": True}]
+    assert items == [_expected_school_major_item(school_id=11, major_id=16)]
 
 
-def test_parse_assigns_school_major_rank_and_flags_top_three_as_featured():
+def test_parse_records_display_order_without_marking_top_three_as_featured():
     spider = _make_school_major_spider()
     response = _make_response(
         """
@@ -316,8 +329,8 @@ def test_parse_assigns_school_major_rank_and_flags_top_three_as_featured():
     ):
         items = asyncio.run(_collect(spider.parse(response)))
 
-    assert [item["school_major_rank"] for item in items] == [1, 2, 3, 4]
-    assert [item["is_featured_major"] for item in items] == [True, True, True, False]
+    assert [item["school_major_display_order"] for item in items] == [1, 2, 3, 4]
+    assert [item["is_featured_major"] for item in items] == [False, False, False, False]
 
 
 def test_parse_skips_ambiguous_exact_name_matches(caplog):

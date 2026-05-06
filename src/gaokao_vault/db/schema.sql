@@ -263,8 +263,12 @@ CREATE TABLE IF NOT EXISTS school_majors (
     id              BIGSERIAL PRIMARY KEY,
     school_id       BIGINT NOT NULL REFERENCES schools(id),
     major_id        BIGINT NOT NULL REFERENCES majors(id),
-    school_major_rank INTEGER,
+    school_major_display_order INTEGER,
+    major_strength_rank INTEGER,
+    major_strength_score NUMERIC(6,2),
+    major_strength_tier VARCHAR(50),
     is_featured_major BOOLEAN NOT NULL DEFAULT FALSE,
+    strength_evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
     content_hash    VARCHAR(64),
     crawl_task_id   BIGINT REFERENCES crawl_tasks(id),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -273,9 +277,49 @@ CREATE TABLE IF NOT EXISTS school_majors (
 
 CREATE INDEX IF NOT EXISTS idx_school_majors_major ON school_majors(major_id);
 CREATE INDEX IF NOT EXISTS idx_school_majors_school ON school_majors(school_id);
-CREATE INDEX IF NOT EXISTS idx_school_majors_featured ON school_majors(school_id, is_featured_major, school_major_rank);
-ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS school_major_rank INTEGER;
+CREATE INDEX IF NOT EXISTS idx_school_majors_featured
+    ON school_majors(school_id, is_featured_major, major_strength_rank, major_strength_score DESC);
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS school_major_display_order INTEGER;
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_rank INTEGER;
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_score NUMERIC(6,2);
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_tier VARCHAR(50);
 ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS is_featured_major BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS strength_evidence JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+CREATE TABLE IF NOT EXISTS school_major_strength_signals (
+    id              BIGSERIAL PRIMARY KEY,
+    school_id       BIGINT NOT NULL REFERENCES schools(id),
+    major_id        BIGINT NOT NULL REFERENCES majors(id),
+    signal_type     VARCHAR(50) NOT NULL,
+    signal_level    VARCHAR(50),
+    strength_score  NUMERIC(6,2) NOT NULL,
+    source_url      VARCHAR(255),
+    evidence_title  VARCHAR(200),
+    evidence_year   SMALLINT,
+    content_hash    VARCHAR(64),
+    crawl_task_id   BIGINT REFERENCES crawl_tasks(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_school_major_strength_signals_unique_key
+    ON school_major_strength_signals(school_id, major_id, signal_type, signal_level, evidence_year)
+    NULLS NOT DISTINCT;
+CREATE INDEX IF NOT EXISTS idx_school_major_strength_signals_school_major
+    ON school_major_strength_signals(school_id, major_id, strength_score DESC);
+
+UPDATE school_majors
+SET major_strength_rank = NULL,
+    major_strength_score = NULL,
+    major_strength_tier = NULL,
+    is_featured_major = FALSE,
+    strength_evidence = '[]'::jsonb
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM school_major_strength_signals sms
+    WHERE sms.school_id = school_majors.school_id
+      AND sms.major_id = school_majors.major_id
+);
 
 CREATE TABLE IF NOT EXISTS major_satisfaction (
     id              BIGSERIAL PRIMARY KEY,
@@ -813,8 +857,12 @@ SELECT
     ) AS major_notes,
     mar.major_group_code,
     mar.major_code_raw,
-    sm.school_major_rank,
+    sm.school_major_display_order,
+    sm.major_strength_rank,
+    sm.major_strength_score,
+    sm.major_strength_tier,
     COALESCE(sm.is_featured_major, FALSE) AS is_featured_major,
+    sm.strength_evidence,
     mar.campus,
     mar.program_type,
     mar.eligibility_requirements,
@@ -856,8 +904,12 @@ SELECT
     ) AS major_notes,
     ep.major_group_code,
     ep.major_code_raw,
-    sm.school_major_rank,
+    sm.school_major_display_order,
+    sm.major_strength_rank,
+    sm.major_strength_score,
+    sm.major_strength_tier,
     COALESCE(sm.is_featured_major, FALSE) AS is_featured_major,
+    sm.strength_evidence,
     ep.campus,
     ep.program_type,
     ep.eligibility_requirements,

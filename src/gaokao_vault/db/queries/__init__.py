@@ -2,12 +2,14 @@ from gaokao_vault.db.queries.admission import upsert_major_admission_result
 from gaokao_vault.db.queries.crawl_meta import create_task, find_latest_hash, insert_snapshot, update_task_stats
 from gaokao_vault.db.queries.enrollment import upsert_charter, upsert_enrollment_plan, upsert_timeline
 from gaokao_vault.db.queries.majors import (
+    refresh_school_major_strength_rollup,
     upsert_major,
     upsert_major_category,
     upsert_major_interpretation,
     upsert_major_satisfaction,
     upsert_major_subcategory,
     upsert_school_major,
+    upsert_school_major_strength_signal,
 )
 from gaokao_vault.db.queries.recommendation import find_candidate_admission_chain
 from gaokao_vault.db.queries.schools import (
@@ -28,6 +30,7 @@ __all__ = [
     "find_schools_by_city",
     "find_score_segment_rank",
     "insert_snapshot",
+    "refresh_school_major_strength_rollup",
     "update_task_stats",
     "upsert_charter",
     "upsert_enrollment_plan",
@@ -39,6 +42,7 @@ __all__ = [
     "upsert_major_subcategory",
     "upsert_school",
     "upsert_school_major",
+    "upsert_school_major_strength_signal",
     "upsert_school_satisfaction",
     "upsert_score_line",
     "upsert_special_enrollment",

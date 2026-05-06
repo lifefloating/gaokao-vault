@@ -27,7 +27,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 _HREF_CODE_PATTERN = re.compile(r"(?:code|zydm|specialityCode)-([A-Za-z0-9]+)")
 SCHOOL_MAJOR_URL_TEMPLATE = f"{BASE_URL}/sch/listzyjs--schId-{{sch_id}},categoryId-417877,mindex-3.dhtml"
-FEATURED_MAJOR_RANK_CUTOFF = 3
 
 
 class SchoolMajorSpider(BaseGaokaoSpider):
@@ -261,8 +260,8 @@ class SchoolMajorSpider(BaseGaokaoSpider):
                 data = {
                     "school_id": school_id,
                     "major_id": major_id,
-                    "school_major_rank": index,
-                    "is_featured_major": index <= FEATURED_MAJOR_RANK_CUTOFF,
+                    "school_major_display_order": index,
+                    "is_featured_major": False,
                 }
                 item = validate_item(SchoolMajorItem, data)
                 if item:

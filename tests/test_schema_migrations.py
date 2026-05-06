@@ -12,16 +12,47 @@ def test_enrollment_plans_existing_tables_get_conflict_target_index() -> None:
     assert "NULLS NOT DISTINCT" in schema_sql
 
 
-def test_school_majors_existing_tables_get_school_major_ranking_columns() -> None:
+def test_school_majors_existing_tables_get_school_major_strength_columns() -> None:
     schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
 
-    assert "school_major_rank INTEGER" in schema_sql
+    assert "school_major_display_order INTEGER" in schema_sql
+    assert "major_strength_rank INTEGER" in schema_sql
+    assert "major_strength_score NUMERIC(6,2)" in schema_sql
+    assert "major_strength_tier VARCHAR(50)" in schema_sql
     assert "is_featured_major BOOLEAN NOT NULL DEFAULT FALSE" in schema_sql
-    assert "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS school_major_rank INTEGER" in schema_sql
+    assert "strength_evidence JSONB NOT NULL DEFAULT '[]'::jsonb" in schema_sql
+    assert "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS school_major_display_order INTEGER" in schema_sql
+    assert "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_rank INTEGER" in schema_sql
+    assert "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_score NUMERIC(6,2)" in schema_sql
+    assert "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_tier VARCHAR(50)" in schema_sql
     assert (
         "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS is_featured_major BOOLEAN NOT NULL DEFAULT FALSE"
         in schema_sql
     )
+    assert (
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS strength_evidence JSONB NOT NULL DEFAULT '[]'::jsonb"
+        in schema_sql
+    )
+    assert (
+        "UPDATE school_majors\n"
+        "SET major_strength_rank = NULL,\n"
+        "    major_strength_score = NULL,\n"
+        "    major_strength_tier = NULL,\n"
+        "    is_featured_major = FALSE,\n"
+        "    strength_evidence = '[]'::jsonb\n"
+        "WHERE NOT EXISTS ("
+    ) in schema_sql
+
+
+def test_school_major_strength_signals_table_is_declared() -> None:
+    schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
+
+    assert "CREATE TABLE IF NOT EXISTS school_major_strength_signals" in schema_sql
+    assert "signal_type     VARCHAR(50) NOT NULL" in schema_sql
+    assert "signal_level    VARCHAR(50)" in schema_sql
+    assert "strength_score  NUMERIC(6,2) NOT NULL" in schema_sql
+    assert "source_url      VARCHAR(255)" in schema_sql
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_school_major_strength_signals_unique_key" in schema_sql
 
 
 def test_special_enrollments_existing_tables_get_null_safe_conflict_target_index() -> None:
