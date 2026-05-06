@@ -4,6 +4,10 @@ import re
 from pathlib import Path
 
 
+def _normalize_sql(sql: str) -> str:
+    return re.sub(r"\s+", " ", sql).strip()
+
+
 def test_enrollment_plans_existing_tables_get_conflict_target_index() -> None:
     schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
 
@@ -42,6 +46,31 @@ def test_school_majors_existing_tables_get_school_major_strength_columns() -> No
         "    strength_evidence = '[]'::jsonb\n"
         "WHERE NOT EXISTS ("
     ) in schema_sql
+
+
+def test_school_majors_strength_index_is_created_after_existing_table_columns_are_added() -> None:
+    schema_sql = _normalize_sql(Path("src/gaokao_vault/db/schema.sql").read_text())
+
+    featured_index_sql = (
+        "CREATE INDEX IF NOT EXISTS idx_school_majors_featured "
+        "ON school_majors(school_id, is_featured_major, major_strength_rank, major_strength_score DESC)"
+    )
+    column_statements = (
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS school_major_display_order INTEGER",
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_rank INTEGER",
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_score NUMERIC(6,2)",
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_tier VARCHAR(50)",
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS is_featured_major BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS strength_evidence JSONB NOT NULL DEFAULT '[]'::jsonb",
+    )
+
+    assert featured_index_sql in schema_sql
+    for column_sql in column_statements:
+        assert column_sql in schema_sql
+
+    featured_index_position = schema_sql.find(featured_index_sql)
+    for column_sql in column_statements:
+        assert schema_sql.find(column_sql) < featured_index_position
 
 
 def test_school_major_strength_signals_table_is_declared() -> None:
