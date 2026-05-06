@@ -44,6 +44,21 @@ def test_school_majors_existing_tables_get_school_major_strength_columns() -> No
     ) in schema_sql
 
 
+def test_school_majors_strength_index_is_created_after_existing_table_columns_are_added() -> None:
+    schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
+
+    featured_index_position = schema_sql.index("CREATE INDEX IF NOT EXISTS idx_school_majors_featured")
+    for column_sql in (
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS school_major_display_order INTEGER",
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_rank INTEGER",
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_score NUMERIC(6,2)",
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_tier VARCHAR(50)",
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS is_featured_major BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS strength_evidence JSONB NOT NULL DEFAULT '[]'::jsonb",
+    ):
+        assert schema_sql.index(column_sql) < featured_index_position
+
+
 def test_school_major_strength_signals_table_is_declared() -> None:
     schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
 

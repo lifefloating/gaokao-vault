@@ -277,14 +277,14 @@ CREATE TABLE IF NOT EXISTS school_majors (
 
 CREATE INDEX IF NOT EXISTS idx_school_majors_major ON school_majors(major_id);
 CREATE INDEX IF NOT EXISTS idx_school_majors_school ON school_majors(school_id);
-CREATE INDEX IF NOT EXISTS idx_school_majors_featured
-    ON school_majors(school_id, is_featured_major, major_strength_rank, major_strength_score DESC);
 ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS school_major_display_order INTEGER;
 ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_rank INTEGER;
 ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_score NUMERIC(6,2);
 ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_tier VARCHAR(50);
 ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS is_featured_major BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS strength_evidence JSONB NOT NULL DEFAULT '[]'::jsonb;
+CREATE INDEX IF NOT EXISTS idx_school_majors_featured
+    ON school_majors(school_id, is_featured_major, major_strength_rank, major_strength_score DESC);
 
 CREATE TABLE IF NOT EXISTS school_major_strength_signals (
     id              BIGSERIAL PRIMARY KEY,
