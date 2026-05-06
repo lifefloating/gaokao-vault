@@ -145,12 +145,19 @@ class IncrementalCronScheduler:
     async def _run_incremental_crawl(self, scheduled_at: datetime) -> None:
         from gaokao_vault.constants import PHASE2_TYPES, PHASE3_TYPES
         from gaokao_vault.db.connection import close_pool, create_pool
+        from gaokao_vault.db.queries.crawl_meta import fail_stale_running_tasks
         from gaokao_vault.scheduler.orchestrator import Orchestrator
 
         started = monotonic()
         pool = await create_pool(self._app_config.db)
         scheduled_types = self._types or [task_type.value for task_type in [*PHASE2_TYPES, *PHASE3_TYPES]]
         try:
+            recovered = await fail_stale_running_tasks(
+                pool,
+                stale_after_seconds=self._app_config.crawl.spider_timeout,
+            )
+            if recovered:
+                logger.warning("Recovered %d stale running crawl task(s) before scheduled crawl", recovered)
             orchestrator = Orchestrator(
                 db_pool=pool,
                 config=self._app_config.crawl,
@@ -158,7 +165,10 @@ class IncrementalCronScheduler:
                 db_config=self._app_config.db,
                 app_config=self._app_config,
             )
-            await orchestrator.run_independent(scheduled_types, max_concurrent=self._max_concurrent_types)
+            if self._types:
+                await orchestrator.run_independent(scheduled_types, max_concurrent=self._max_concurrent_types)
+            else:
+                await orchestrator.run_all()
         except Exception:
             logger.exception(
                 "Scheduled crawl failed scheduled_at=%s mode=%s types=%s",

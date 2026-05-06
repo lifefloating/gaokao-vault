@@ -180,6 +180,80 @@ def healthcheck() -> None:
 
 
 @app.command()
+def audit_completeness(
+    province: Annotated[str, typer.Option("--province", "-p", help="Province code or name")] = "吉林",
+    years: Annotated[list[int] | None, typer.Option("--year", "-y", help="Admission years to audit")] = None,
+    limit: Annotated[int, typer.Option("--limit", "-n", help="Maximum missing school-year rows to print")] = 50,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Audit recent three-year admission-result and enrollment-plan coverage."""
+    _setup_logging(verbose)
+
+    from gaokao_vault.db.queries.data_quality import normalize_completeness_years
+
+    audit_years = normalize_completeness_years(years)
+
+    async def _run():
+        from gaokao_vault.db.connection import close_pool, create_pool
+        from gaokao_vault.db.queries.data_quality import fetch_school_year_plan_gaps, fetch_year_data_coverage
+
+        pool = await create_pool()
+        try:
+            async with pool.acquire() as conn:
+                coverage_rows = await fetch_year_data_coverage(conn, province=province, years=audit_years)
+                gap_rows = await fetch_school_year_plan_gaps(conn, province=province, years=audit_years, limit=limit)
+        finally:
+            await close_pool()
+
+        _print_completeness_coverage(coverage_rows)
+        _print_completeness_gaps(gap_rows)
+
+    asyncio.run(_run())
+
+
+def _print_completeness_coverage(rows: list[dict]) -> None:
+    typer.echo("Coverage by year")
+    if not rows:
+        typer.echo("  No rows. Check province code/name and source tables.")
+        return
+
+    for row in rows:
+        typer.echo(
+            "  "
+            f"{row['year']} {row['province_name']}: "
+            f"admission_schools={row.get('admission_schools', 0)} "
+            f"admission_records={row.get('admission_records', 0)} "
+            f"admission_records_with_plan_count={row.get('admission_records_with_plan_count', 0)} "
+            f"admission_records_with_major_group_code={row.get('admission_records_with_major_group_code', 0)} "
+            f"plan_schools={row.get('plan_schools', 0)} "
+            f"plan_records={row.get('plan_records', 0)} "
+            f"plan_records_with_plan_count={row.get('plan_records_with_plan_count', 0)} "
+            f"plan_records_with_major_group_code={row.get('plan_records_with_major_group_code', 0)} "
+            f"plan_records_with_selection_requirement={row.get('plan_records_with_selection_requirement', 0)} "
+            f"plan_count_sum={row.get('plan_count_sum', 0)} "
+            f"missing_plan_schools={row.get('missing_plan_schools', 0)}"
+        )
+
+
+def _print_completeness_gaps(rows: list[dict]) -> None:
+    typer.echo("Missing enrollment plans")
+    if not rows:
+        typer.echo("  None in requested window.")
+        return
+
+    for row in rows:
+        typer.echo(
+            "  "
+            f"{row['year']} {row['school_name']} "
+            f"(school_id={row['school_id']}): "
+            f"admission_records={row.get('admission_records', 0)} "
+            f"admission_records_with_plan_count={row.get('admission_records_with_plan_count', 0)} "
+            f"plan_records={row.get('plan_records', 0)} "
+            f"plan_count_sum={row.get('plan_count_sum', 0)}"
+        )
+
+
+@app.command()
 def schedule(
     mode: Annotated[str | None, typer.Option("--mode", "-m", help="full or incremental")] = None,
     types: Annotated[list[str] | None, typer.Option("--types", "-t", help="Specific task types")] = None,

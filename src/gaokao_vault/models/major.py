@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class MajorCategoryItem(BaseModel):
@@ -34,6 +34,12 @@ class MajorItem(BaseModel):
 class SchoolMajorItem(BaseModel):
     school_id: int
     major_id: int
+    school_major_display_order: int | None = None
+    major_strength_rank: int | None = None
+    major_strength_score: float | None = None
+    major_strength_tier: str | None = None
+    is_featured_major: bool = False
+    strength_evidence: list[dict] = Field(default_factory=list)
 
 
 class MajorSatisfactionItem(BaseModel):

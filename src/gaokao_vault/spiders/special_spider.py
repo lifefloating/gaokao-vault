@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import logging
 import re
+import string
+from collections.abc import Iterable
 from datetime import date, datetime
+from html import unescape
+from typing import ClassVar
+from urllib.parse import urljoin
 
 from scrapling.fetchers import FetcherSession
 from scrapling.spiders import Request, Response
@@ -17,6 +22,11 @@ from gaokao_vault.spiders.base import BaseGaokaoSpider
 from gaokao_vault.spiders.dxsbb import DXSBB_BASE_URL, iter_article_links, next_list_page_url, normalized_text
 
 logger = logging.getLogger(__name__)
+
+CHSI_STRONG_BASE_START_URL = "https://gaokao.chsi.com.cn/gkzt/jcxkzs"
+CHSI_STRONG_BASE_SCHOOL_URL = "https://bm.chsi.com.cn/jcxkzs/sch/{school_code_raw}"
+CHSI_STRONG_BASE_ANNOUNCEMENTS_URL = "https://bm.chsi.com.cn/jcxkzs/sch/ggtzs/{school_code_raw}"
+CHSI_STRONG_BASE_LIST_PAGE_URL = "https://gaokao.chsi.com.cn/gkzt/jcxkzs#jcxkzs-sch"
 
 ENROLLMENT_TYPES = [
     "自主招生",
@@ -44,18 +54,69 @@ DXSBB_SPECIAL_LISTS = [
     },
 ]
 
+CHSI_STRONG_BASE_SCHOOLS = (
+    ("10001", "北京大学"),
+    ("10002", "中国人民大学"),
+    ("10003", "清华大学"),
+    ("10006", "北京航空航天大学"),
+    ("10007", "北京理工大学"),
+    ("10019", "中国农业大学"),
+    ("10027", "北京师范大学"),
+    ("10052", "中央民族大学"),
+    ("10055", "南开大学"),
+    ("10056", "天津大学"),
+    ("10141", "大连理工大学"),
+    ("10145", "东北大学"),
+    ("10183", "吉林大学"),
+    ("10213", "哈尔滨工业大学"),
+    ("10246", "复旦大学"),
+    ("10247", "同济大学"),
+    ("10248", "上海交通大学"),
+    ("10269", "华东师范大学"),
+    ("10284", "南京大学"),
+    ("10286", "东南大学"),
+    ("10335", "浙江大学"),
+    ("10358", "中国科学技术大学"),
+    ("10384", "厦门大学"),
+    ("10422", "山东大学"),
+    ("10423", "中国海洋大学"),
+    ("10486", "武汉大学"),
+    ("10487", "华中科技大学"),
+    ("10532", "湖南大学"),
+    ("10533", "中南大学"),
+    ("10558", "中山大学"),
+    ("10561", "华南理工大学"),
+    ("10610", "四川大学"),
+    ("10611", "重庆大学"),
+    ("10614", "电子科技大学"),
+    ("10698", "西安交通大学"),
+    ("10699", "西北工业大学"),
+    ("10712", "西北农林科技大学"),
+    ("10730", "兰州大学"),
+    ("92002", "国防科技大学"),
+)
+
 
 class SpecialSpider(BaseGaokaoSpider):
     """Crawl special enrollment types."""
 
     name: str = "special_spider"
     task_type: str = TaskType.SPECIAL
-    allowed_domains = {"www.dxsbb.com", "dxsbb.com"}  # noqa: RUF012
+    allowed_domains: ClassVar[set[str]] = {
+        "gaokao.chsi.com.cn",
+        "bm.chsi.com.cn",
+        "www.dxsbb.com",
+        "dxsbb.com",
+    }
 
     def configure_sessions(self, manager) -> None:
         manager.add("http", FetcherSession())
 
     async def start_requests(self):
+        yield Request(
+            CHSI_STRONG_BASE_START_URL,
+            callback=self.parse_chsi_strong_base_index,
+        )
         for source in DXSBB_SPECIAL_LISTS:
             yield Request(
                 source["url"],
@@ -65,6 +126,144 @@ class SpecialSpider(BaseGaokaoSpider):
                     "special_admission_type": source["special_admission_type"],
                 },
             )
+
+    async def parse_chsi_strong_base_index(self, response: Response):
+        if response.request is None or response.status == 404:
+            return
+
+        school_nodes = self._extract_chsi_strong_base_schools(response)
+        for school_code_raw, school_name_raw in school_nodes:
+            yield Request(
+                CHSI_STRONG_BASE_SCHOOL_URL.format(school_code_raw=school_code_raw),
+                callback=self.parse_chsi_strong_base_school,
+                meta={
+                    "school_code_raw": school_code_raw,
+                    "school_name_raw": school_name_raw,
+                    "application_url": CHSI_STRONG_BASE_SCHOOL_URL.format(school_code_raw=school_code_raw),
+                },
+            )
+
+    async def parse_chsi_strong_base_school(self, response: Response):
+        if response.request is None or response.status == 404:
+            return
+
+        school_code_raw = str(
+            response.request.meta.get("school_code_raw") or self._extract_school_code_from_url(response.url) or ""
+        )
+        school_name_raw = str(
+            response.request.meta.get("school_name_raw") or self._extract_school_name_from_page(response) or ""
+        )
+        application_url = str(response.request.meta.get("application_url") or response.url)
+        vue_title = self._extract_vue_title(response)
+        title = vue_title or (f"{school_name_raw}强基计划招生简章" if school_name_raw else "强基计划招生简章")
+        content_html = self._extract_vue_content(response)
+        publish_time = self._extract_vue_time(response)
+        registration_start, registration_end = self._extract_time_window_from_text(publish_time or "")
+        content_text = _normalized_html_text(content_html)
+        eligible_majors = _extract_eligible_majors(content_text)
+
+        if vue_title or content_html or content_text:
+            data = _build_chsi_strong_base_data(
+                title=title,
+                content_html=content_html,
+                content_text=content_text,
+                source_url=application_url,
+                source_section="charter",
+                detail_url=application_url,
+                application_url=application_url,
+                school_code_raw=school_code_raw,
+                school_name_raw=school_name_raw,
+                publish_date=None,
+                registration_start=registration_start,
+                registration_end=registration_end,
+                milestones=self._extract_milestones(publish_time),
+                eligible_majors=eligible_majors,
+            )
+            item = validate_item(SpecialEnrollmentItem, data)
+            if item:
+                yield item
+                await self._process_special_item(item)
+
+        yield Request(
+            CHSI_STRONG_BASE_ANNOUNCEMENTS_URL.format(school_code_raw=school_code_raw),
+            callback=self.parse_chsi_strong_base_announcements,
+            meta=_clean_meta({
+                "school_code_raw": school_code_raw,
+                "school_name_raw": school_name_raw,
+                "application_url": application_url,
+            }),
+        )
+
+    async def parse_chsi_strong_base_announcements(self, response: Response):
+        if response.request is None or response.status == 404:
+            return
+
+        school_code_raw = str(
+            response.request.meta.get("school_code_raw") or self._extract_school_code_from_url(response.url) or ""
+        )
+        school_name_raw = str(response.request.meta.get("school_name_raw") or "")
+        application_url = str(
+            response.request.meta.get("application_url")
+            or CHSI_STRONG_BASE_SCHOOL_URL.format(school_code_raw=school_code_raw)
+        )
+
+        for link in self._iter_chsi_notice_links(response):
+            yield Request(
+                link["url"],
+                callback=self.parse_chsi_strong_base_announcement_detail,
+                meta=_clean_meta({
+                    "title": link["title"],
+                    "school_code_raw": school_code_raw,
+                    "school_name_raw": school_name_raw,
+                    "application_url": application_url,
+                }),
+            )
+
+    async def parse_chsi_strong_base_announcement_detail(self, response: Response):
+        if response.request is None or response.status == 404:
+            return
+
+        school_code_raw = str(
+            response.request.meta.get("school_code_raw") or self._extract_school_code_from_url(response.url) or ""
+        )
+        school_name_raw = str(response.request.meta.get("school_name_raw") or "")
+        application_url = str(
+            response.request.meta.get("application_url")
+            or CHSI_STRONG_BASE_SCHOOL_URL.format(school_code_raw=school_code_raw)
+        )
+        title = str(response.request.meta.get("title") or _first_text(response, "#article h1::text") or "").strip()
+        publish_date = _parse_dxsbb_publish_date(_first_text(response, "#article .update::text") or "")
+        content_el = response.css("#article .content, .article-content, .content")
+        content_html = ""
+        content_text = ""
+        if content_el:
+            content_html = content_el.get("").strip()[:10000]
+            content_text = normalized_text(content_el[0])[:10000]
+
+        strong_base_fields = _extract_strong_base_fields(content_text)
+        registration_start = strong_base_fields.get("registration_start")
+        registration_end = strong_base_fields.get("registration_end")
+        eligible_majors = strong_base_fields.get("eligible_majors")
+        data = _build_chsi_strong_base_data(
+            title=title,
+            content_html=content_html,
+            content_text=content_text,
+            source_url=response.url,
+            source_section="announcement",
+            detail_url=response.url,
+            application_url=application_url,
+            school_code_raw=school_code_raw,
+            school_name_raw=school_name_raw,
+            publish_date=publish_date,
+            registration_start=registration_start if isinstance(registration_start, date) else None,
+            registration_end=registration_end if isinstance(registration_end, date) else None,
+            milestones={},
+            eligible_majors=eligible_majors if isinstance(eligible_majors, list) else [],
+        )
+        item = validate_item(SpecialEnrollmentItem, data)
+        if item:
+            yield item
+            await self._process_special_item(item)
 
     async def parse(self, response: Response):
         if response.request is None:
@@ -112,17 +311,7 @@ class SpecialSpider(BaseGaokaoSpider):
                 item = validate_item(SpecialEnrollmentItem, data)
                 if item:
                     yield item
-                    await self.process_item(
-                        item,
-                        entity_type="special_enrollments",
-                        unique_keys={
-                            "enrollment_type": etype,
-                            "school_id": None,
-                            "year": year,
-                            "title": title,
-                        },
-                        upsert_fn=upsert_special_enrollment,
-                    )
+                    await self._process_special_item(item)
 
         if items_found and current_page < MAX_PAGES:
             next_page = current_page + 1
@@ -197,17 +386,7 @@ class SpecialSpider(BaseGaokaoSpider):
         item = validate_item(SpecialEnrollmentItem, data)
         if item:
             yield item
-            await self.process_item(
-                item,
-                entity_type="special_enrollments",
-                unique_keys={
-                    "enrollment_type": data.get("enrollment_type"),
-                    "school_id": data.get("school_id"),
-                    "year": data.get("year"),
-                    "title": data.get("title", ""),
-                },
-                upsert_fn=upsert_special_enrollment,
-            )
+            await self._process_special_item(item)
 
     async def parse_detail(self, response: Response):
         if response.request is None:
@@ -240,17 +419,241 @@ class SpecialSpider(BaseGaokaoSpider):
         item = validate_item(SpecialEnrollmentItem, data)
         if item:
             yield item
-            await self.process_item(
-                item,
-                entity_type="special_enrollments",
-                unique_keys={
-                    "enrollment_type": data.get("enrollment_type"),
-                    "school_id": data.get("school_id"),
-                    "year": data.get("year"),
-                    "title": data.get("title", ""),
-                },
-                upsert_fn=upsert_special_enrollment,
+            await self._process_special_item(item)
+
+    async def _process_special_item(self, item: dict) -> None:
+        await self.process_item(
+            item,
+            entity_type="special_enrollments",
+            unique_keys={
+                "enrollment_type": item.get("enrollment_type"),
+                "school_id": item.get("school_id"),
+                "year": item.get("year"),
+                "title": item.get("title", ""),
+            },
+            upsert_fn=upsert_special_enrollment,
+        )
+
+    def _extract_chsi_strong_base_schools(self, response: Response) -> list[tuple[str, str]]:
+        text = _response_text(response)
+        if "jcxkzs-sch" in text or "强基计划" in text:
+            matches = re.findall(r"/jcxkzs/sch/(\d{5}).*?(?:title|alt|aria-label)?=?\"?([^\"<>]{2,30})", text)
+            parsed = [(code, name.strip()) for code, name in matches if code and name.strip()]
+            if parsed:
+                return parsed
+        return list(CHSI_STRONG_BASE_SCHOOLS)
+
+    def _extract_school_name_from_page(self, response: Response) -> str | None:
+        title = _first_text(response, "title::text")
+        if not title:
+            return None
+        match = re.match(r"(?P<school>.+?)(?:\d{4}年)?强基计划报名平台", title)
+        if match is None:
+            return None
+        return match.group("school").strip() or None
+
+    def _extract_vue_title(self, response: Response) -> str | None:
+        value = _extract_vue_string(response, "jzbt")
+        return value.strip() if value else None
+
+    def _extract_vue_content(self, response: Response) -> str:
+        return _extract_vue_string(response, "content") or ""
+
+    def _extract_vue_time(self, response: Response) -> str | None:
+        return _extract_vue_string(response, "time")
+
+    def _extract_time_window_from_text(self, text: str) -> tuple[date | None, date | None]:
+        match = re.search(r"(\d{4})-(\d{2})-(\d{2}).*?(\d{4})-(\d{2})-(\d{2})", text)
+        if match is None:
+            return None, None
+        try:
+            return (
+                date(int(match.group(1)), int(match.group(2)), int(match.group(3))),
+                date(int(match.group(4)), int(match.group(5)), int(match.group(6))),
             )
+        except ValueError:
+            return None, None
+
+    def _extract_milestones(self, text: str | None) -> dict[str, str | None]:
+        if not text:
+            return {}
+        start, end = self._extract_time_window_from_text(text)
+        if start is None and end is None:
+            return {}
+        return {
+            "registration_start": start.isoformat() if start else None,
+            "registration_end": end.isoformat() if end else None,
+        }
+
+    def _extract_school_code_from_url(self, url: str) -> str | None:
+        match = re.search(r"/sch/(\d{5})", url)
+        if match is None:
+            return None
+        return match.group(1)
+
+    def _iter_chsi_notice_links(self, response: Response) -> Iterable[dict[str, str]]:
+        seen: set[str] = set()
+        for link in response.css("a"):
+            href = link.attrib.get("href", "")
+            title = link.css("::text").get("").strip()
+            if not href or not title or "download" in href:
+                continue
+            url = _absolute_url(response.url, href)
+            if url in seen:
+                continue
+            seen.add(url)
+            yield {"url": url, "title": title}
+
+
+def _normalized_html_text(html_text: str) -> str:
+    if not html_text:
+        return ""
+    parts = []
+    for paragraph in re.split(r"</p>|<br\s*/?>", html_text, flags=re.I):
+        cleaned = unescape(re.sub(r"<[^>]+>", "", paragraph))
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        if cleaned:
+            parts.append(cleaned)
+    return "\n".join(parts)
+
+
+def _response_text(response: Response) -> str:
+    text = getattr(response, "text", None)
+    if isinstance(text, str):
+        return text
+    body = getattr(response, "body", None)
+    if isinstance(body, bytes):
+        return body.decode("utf-8", errors="ignore")
+    if isinstance(body, str):
+        return body
+    content = getattr(response, "content", None)
+    if isinstance(content, bytes):
+        return content.decode("utf-8", errors="ignore")
+    if isinstance(content, str):
+        return content
+    html = getattr(response, "html", None)
+    return html if isinstance(html, str) else ""
+
+
+def _extract_vue_string(response: Response, key: str) -> str | None:
+    text = _response_text(response)
+    if not text:
+        text = "\n".join(part for part in response.css("script::text").getall() if part)
+    match = re.search(rf"{re.escape(key)}\s*:\s*['\"](?P<value>(?:\\.|(?!['\"]).)*)['\"]", text, re.S)
+    if match is None:
+        return None
+    return _decode_js_string(match.group("value"))
+
+
+def _decode_js_string(value: str) -> str:
+    if "\\" not in value:
+        return value
+    decoded: list[str] = []
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char != "\\":
+            decoded.append(char)
+            index += 1
+            continue
+
+        next_index = index + 1
+        if next_index >= len(value):
+            return value
+
+        escaped = value[next_index]
+        if escaped == "u":
+            hex_digits = value[index + 2 : index + 6]
+            if len(hex_digits) != 4 or not all(digit in string.hexdigits for digit in hex_digits):
+                return value
+            decoded.append(chr(int(hex_digits, 16)))
+            index += 6
+            continue
+
+        simple_escapes = {
+            '"': '"',
+            "'": "'",
+            "\\": "\\",
+            "/": "/",
+            "b": "\b",
+            "f": "\f",
+            "n": "\n",
+            "r": "\r",
+            "t": "\t",
+        }
+        replacement = simple_escapes.get(escaped)
+        if replacement is None:
+            return value
+        decoded.append(replacement)
+        index += 2
+    return "".join(decoded)
+
+
+def _clean_meta(meta: dict[str, str | None]) -> dict[str, str]:
+    return {key: value for key, value in meta.items() if value}
+
+
+def _absolute_url(base_url: str, href: str) -> str:
+    return urljoin(base_url, href)
+
+
+def _build_chsi_strong_base_data(
+    *,
+    title: str,
+    content_html: str,
+    content_text: str,
+    source_url: str,
+    source_section: str,
+    detail_url: str,
+    application_url: str,
+    school_code_raw: str,
+    school_name_raw: str,
+    publish_date: date | None,
+    registration_start: date | None,
+    registration_end: date | None,
+    milestones: dict[str, str | None],
+    eligible_majors: list[str],
+) -> dict:
+    shortlist_rule = _extract_labeled_sentence(content_text, "入围规则")
+    school_assessment = _extract_labeled_sentence(content_text, "校测规则") or _extract_labeled_sentence(
+        content_text,
+        "学校考核",
+    )
+    registration_window = _registration_window(registration_start, registration_end)
+    data = {
+        "enrollment_type": "强基计划",
+        "special_admission_type": "strong_foundation",
+        "province_code": None,
+        "school_code_raw": school_code_raw or None,
+        "school_name_raw": school_name_raw or None,
+        "school_id": None,
+        "year": _extract_year(title) or datetime.now().year,
+        "title": title,
+        "content": content_html,
+        "content_text": content_text,
+        "publish_date": publish_date,
+        "source_url": source_url,
+        "source_section": source_section,
+        "detail_url": detail_url,
+        "application_url": application_url,
+        "registration_window": registration_window,
+        "registration_start": registration_start,
+        "registration_end": registration_end,
+        "milestones": milestones,
+        "shortlist_rule": shortlist_rule,
+        "selection_rule": shortlist_rule,
+        "school_assessment": school_assessment,
+        "school_exam_rule": school_assessment,
+        "composite_score_formula": _extract_labeled_sentence(content_text, "综合成绩公式")
+        or _extract_labeled_sentence(content_text, "综合成绩"),
+        "admission_rule": _extract_labeled_sentence(content_text, "录取规则"),
+        "eligible_majors": eligible_majors,
+    }
+    data["quality_flags"] = missing_field_flags(
+        data,
+        ("application_url", "registration_window", "eligible_majors"),
+    )
+    return data
 
 
 def _parse_date(text: str) -> date | None:

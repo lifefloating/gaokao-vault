@@ -26,13 +26,12 @@ from gaokao_vault.pipeline.quality import missing_field_flags
 from gaokao_vault.pipeline.validator import validate_item
 from gaokao_vault.spiders.base import BaseGaokaoSpider
 from gaokao_vault.spiders.response_utils import response_json
-from gaokao_vault.spiders.scope import iter_crawl_years, load_province_targets
+from gaokao_vault.spiders.scope import load_province_targets
 from gaokao_vault.spiders.table_candidates import candidate_tables
 
 logger = logging.getLogger(__name__)
 
 YEAR_START = 2020
-YEAR_END = datetime.now().year
 DATA_SOURCE = "gaokao.cn"
 CHSI_DATA_SOURCE = "gaokao.chsi.com.cn"
 GAOKAO_STATIC_BASE_URL = "https://static-data.gaokao.cn"
@@ -104,7 +103,7 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
             rows = await conn.fetch("SELECT id, sch_id, name FROM schools ORDER BY id")
 
         provinces = await load_province_targets(pool)
-        years = list(iter_crawl_years(mode=self.mode, full_start_year=YEAR_START, current_year=YEAR_END))
+        years = _select_plan_years(self.mode, datetime.now())
         schools = [{"id": int(row["id"]), "sch_id": int(row["sch_id"]), "name": str(row["name"])} for row in rows]
         province_meta = [
             {"id": province.id, "name": province.name, "code": province.url_value} for province in provinces
@@ -165,13 +164,21 @@ class EnrollmentPlanSpider(BaseGaokaoSpider):
             return
 
         gaokao_school_id = response.request.meta.get("gaokao_school_id")
-        allowed_years = {_safe_int(year) for year in response.request.meta.get("years") or []}
-        allowed_years.discard(None)
+        allowed_years = _normalize_year_list(response.request.meta.get("years") or [])
 
         for province in response.request.meta.get("provinces") or []:
             province_code = str(province.get("code") or "").strip()
             available_years = {_safe_int(year) for year in available_years_by_province.get(province_code, [])}
-            for year in sorted(allowed_years & available_years):
+            missing_years = sorted(set(allowed_years) - available_years)
+            if missing_years:
+                logger.debug(
+                    "Enrollment plan dictionary missing years for school=%s province=%s available=%s missing=%s",
+                    response.request.meta.get("school_name"),
+                    province_code,
+                    sorted(year for year in available_years if year is not None),
+                    missing_years,
+                )
+            for year in allowed_years:
                 yield Request(
                     PLAN_URL_TEMPLATE.format(school_id=gaokao_school_id, year=year, province=province_code),
                     callback=self.parse,
@@ -470,3 +477,26 @@ async def _resolve_major_id(conn, major_name: str) -> int | None:
     if len(rows) == 1:
         return rows[0]["id"]
     return None
+
+
+def _select_plan_years(mode: str, now: datetime) -> list[int]:
+    if mode != "incremental":
+        return list(range(YEAR_START, now.year + 1))
+
+    if now.month == 12:
+        candidates = [now.year, now.year - 1, now.year - 2]
+    else:
+        candidates = [now.year - 1, now.year - 2, now.year - 3]
+    return [year for year in candidates if year >= YEAR_START]
+
+
+def _normalize_year_list(years: list[int | str | None]) -> list[int]:
+    normalized: list[int] = []
+    seen: set[int] = set()
+    for year in years:
+        value = _safe_int(year)
+        if value is None or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized

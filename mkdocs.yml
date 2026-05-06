@@ -10,6 +10,7 @@ nav:
   - 首页: index.md
   - 快速开始: getting-started.md
   - 架构设计: architecture.md
+  - 强基计划数据设计: strong-foundation.md
   - CLI 参考: cli.md
   - API 模块: modules.md
 

@@ -11,6 +11,7 @@ def test_schema_exposes_gaokao_agent_source_views() -> None:
         "schools_v",
         "majors_v",
         "admission_records_v",
+        "special_enrollments_v",
         "province_rules_v",
         "score_rank_v",
     ):
@@ -29,11 +30,39 @@ def test_admission_records_view_contains_major_level_evidence_columns() -> None:
         "plan_count",
         "major_notes",
         "major_group_code",
+        "school_major_display_order",
+        "major_strength_rank",
+        "major_strength_score",
+        "major_strength_tier",
+        "is_featured_major",
+        "strength_evidence",
         "program_type",
         "eligibility_requirements",
         "physical_exam_or_political_review",
         "service_obligation",
+        "selection_requirement",
         "source_url",
+    ):
+        assert column_name in SCHEMA_SQL
+
+
+def test_special_enrollments_view_contains_strong_foundation_fields() -> None:
+    for column_name in (
+        "document_uid",
+        "document_type",
+        "special_admission_type",
+        "school_code_raw",
+        "school_name_raw",
+        "source_section",
+        "detail_url",
+        "application_url",
+        "registration_window",
+        "milestones",
+        "selection_rule",
+        "school_assessment",
+        "composite_score_formula",
+        "admission_rule",
+        "eligible_majors",
     ):
         assert column_name in SCHEMA_SQL
 

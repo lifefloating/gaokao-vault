@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncpg
 
 from gaokao_vault.models.recommendation import CandidateProfile
+from gaokao_vault.pipeline.batch_normalizer import normalize_batch
 
 
 async def find_candidate_admission_chain(
@@ -13,6 +14,7 @@ async def find_candidate_admission_chain(
 ) -> list[dict]:
     lower_rank = max(1, profile.rank - profile.rank_window)
     upper_rank = profile.rank + profile.rank_window
+    batch_info = normalize_batch(profile.batch)
     rows = await conn.fetch(
         """
         WITH matched_candidates AS (
@@ -23,10 +25,17 @@ async def find_candidate_admission_chain(
             FROM major_admission_results mar
             JOIN majors m ON m.id = mar.major_id
             WHERE mar.province_id = $1
-              AND mar.year BETWEEN ($2 - $8) AND ($2 - 1)
+              AND mar.year BETWEEN ($2 - $11) AND ($2 - 1)
               AND mar.subject_category_id IS NOT DISTINCT FROM $3
-              AND mar.batch = $4
-              AND mar.min_rank BETWEEN $5 AND $6
+              AND (
+                  mar.batch = $4
+                  OR (
+                      mar.batch_code IS NOT DISTINCT FROM $5
+                      AND mar.batch_category IS NOT DISTINCT FROM $6
+                      AND mar.batch_segment IS NOT DISTINCT FROM $7
+                  )
+              )
+              AND mar.min_rank BETWEEN $8 AND $9
         ),
         name_match_candidates AS (
             SELECT
@@ -48,7 +57,14 @@ async def find_candidate_admission_chain(
             WHERE ep.province_id = $1
               AND ep.year = $2
               AND ep.subject_category_id IS NOT DISTINCT FROM $3
-              AND ep.batch = $4
+              AND (
+                  ep.batch = $4
+                  OR (
+                      ep.batch_code IS NOT DISTINCT FROM $5
+                      AND ep.batch_category IS NOT DISTINCT FROM $6
+                      AND ep.batch_segment IS NOT DISTINCT FROM $7
+                  )
+              )
             UNION ALL
             SELECT
                 ep.*,
@@ -60,7 +76,14 @@ async def find_candidate_admission_chain(
             WHERE ep.province_id = $1
               AND ep.year = $2
               AND ep.subject_category_id IS NOT DISTINCT FROM $3
-              AND ep.batch = $4
+              AND (
+                  ep.batch = $4
+                  OR (
+                      ep.batch_code IS NOT DISTINCT FROM $5
+                      AND ep.batch_category IS NOT DISTINCT FROM $6
+                      AND ep.batch_segment IS NOT DISTINCT FROM $7
+                  )
+              )
               AND ep.major_id IS NULL
               AND NOT EXISTS (
                   SELECT 1
@@ -155,15 +178,22 @@ async def find_candidate_admission_chain(
                     )
                     ORDER BY mar.year DESC
                 ) AS admission_history,
-                MIN(ABS(mar.min_rank - $7)) AS rank_distance
+                MIN(ABS(mar.min_rank - $10)) AS rank_distance
             FROM major_admission_results mar
             JOIN matched_candidates mc
               ON mc.school_id = mar.school_id
              AND mc.major_id = mar.major_id
             WHERE mar.province_id = $1
-              AND mar.year BETWEEN ($2 - $8) AND ($2 - 1)
+              AND mar.year BETWEEN ($2 - $11) AND ($2 - 1)
               AND mar.subject_category_id IS NOT DISTINCT FROM $3
-              AND mar.batch = $4
+              AND (
+                  mar.batch = $4
+                  OR (
+                      mar.batch_code IS NOT DISTINCT FROM $5
+                      AND mar.batch_category IS NOT DISTINCT FROM $6
+                      AND mar.batch_segment IS NOT DISTINCT FROM $7
+                  )
+              )
             GROUP BY mar.school_id, mar.major_id
         )
         SELECT
@@ -174,6 +204,12 @@ async def find_candidate_admission_chain(
             mc.major_id,
             m.code AS major_code,
             m.name AS major_name,
+            sm.school_major_display_order,
+            sm.major_strength_rank,
+            sm.major_strength_score,
+            sm.major_strength_tier,
+            COALESCE(sm.is_featured_major, FALSE) AS is_featured_major,
+            sm.strength_evidence,
             COALESCE(plans.primary_major_group_code, history.primary_major_group_code) AS major_group_code,
             COALESCE(plans.primary_major_code_raw, history.primary_major_code_raw) AS major_code_raw,
             COALESCE(plans.primary_campus, history.primary_campus) AS campus,
@@ -200,18 +236,30 @@ async def find_candidate_admission_chain(
         FROM matched_candidates mc
         JOIN schools s ON s.id = mc.school_id
         JOIN majors m ON m.id = mc.major_id
+        LEFT JOIN school_majors sm
+          ON sm.school_id = mc.school_id
+         AND sm.major_id = mc.major_id
         LEFT JOIN current_plans plans
           ON plans.school_id = mc.school_id
          AND plans.major_id = mc.major_id
         LEFT JOIN admission_history history
           ON history.school_id = mc.school_id
          AND history.major_id = mc.major_id
-        ORDER BY history.rank_distance NULLS LAST, s.name, m.name
+        ORDER BY
+            history.rank_distance NULLS LAST,
+            sm.major_strength_rank NULLS LAST,
+            sm.major_strength_score DESC NULLS LAST,
+            sm.school_major_display_order NULLS LAST,
+            s.name,
+            m.name
         """,
         profile.province_id,
         profile.year,
         profile.subject_category_id,
         profile.batch,
+        batch_info.code,
+        batch_info.category,
+        batch_info.segment,
         lower_rank,
         upper_rank,
         profile.rank,

@@ -43,6 +43,22 @@ async def update_task_stats(pool: asyncpg.Pool, task_id: int, stats: dict[str, i
         )
 
 
+async def fail_stale_running_tasks(pool: asyncpg.Pool, *, stale_after_seconds: int) -> int:
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            """
+            UPDATE crawl_tasks
+            SET status = 'failed',
+                finished_at = NOW(),
+                error_message = 'Recovered stale running task after scheduler restart'
+            WHERE status = 'running'
+              AND started_at < NOW() - ($1::TEXT || ' seconds')::INTERVAL
+            """,
+            stale_after_seconds,
+        )
+    return _updated_row_count(result)
+
+
 async def insert_snapshot(
     conn: asyncpg.Connection,
     crawl_task_id: int,
@@ -68,6 +84,13 @@ async def insert_snapshot(
         json.dumps(snapshot_data, ensure_ascii=False, default=str) if snapshot_data else None,
     )
     return row["id"]
+
+
+def _updated_row_count(result: str) -> int:
+    try:
+        return int(result.rsplit(" ", maxsplit=1)[-1])
+    except (IndexError, ValueError):
+        return 0
 
 
 async def find_latest_hash(

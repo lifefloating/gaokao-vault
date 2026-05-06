@@ -241,8 +241,9 @@ class SchoolMajorSpider(BaseGaokaoSpider):
         if not school_id or not sch_id:
             return
 
+        candidates = self._extract_major_candidates(response)
         async with (await self._get_pool()).acquire() as conn:
-            for candidate in self._extract_major_candidates(response):
+            for index, candidate in enumerate(candidates, start=1):
                 major_id = await self._resolve_major_id(
                     conn,
                     school_id=school_id,
@@ -256,7 +257,12 @@ class SchoolMajorSpider(BaseGaokaoSpider):
                 if major_id is None:
                     continue
 
-                data = {"school_id": school_id, "major_id": major_id}
+                data = {
+                    "school_id": school_id,
+                    "major_id": major_id,
+                    "school_major_display_order": index,
+                    "is_featured_major": False,
+                }
                 item = validate_item(SchoolMajorItem, data)
                 if item:
                     yield item

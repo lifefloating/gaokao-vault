@@ -12,11 +12,58 @@ def test_enrollment_plans_existing_tables_get_conflict_target_index() -> None:
     assert "NULLS NOT DISTINCT" in schema_sql
 
 
+def test_school_majors_existing_tables_get_school_major_strength_columns() -> None:
+    schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
+
+    assert "school_major_display_order INTEGER" in schema_sql
+    assert "major_strength_rank INTEGER" in schema_sql
+    assert "major_strength_score NUMERIC(6,2)" in schema_sql
+    assert "major_strength_tier VARCHAR(50)" in schema_sql
+    assert "is_featured_major BOOLEAN NOT NULL DEFAULT FALSE" in schema_sql
+    assert "strength_evidence JSONB NOT NULL DEFAULT '[]'::jsonb" in schema_sql
+    assert "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS school_major_display_order INTEGER" in schema_sql
+    assert "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_rank INTEGER" in schema_sql
+    assert "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_score NUMERIC(6,2)" in schema_sql
+    assert "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_tier VARCHAR(50)" in schema_sql
+    assert (
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS is_featured_major BOOLEAN NOT NULL DEFAULT FALSE"
+        in schema_sql
+    )
+    assert (
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS strength_evidence JSONB NOT NULL DEFAULT '[]'::jsonb"
+        in schema_sql
+    )
+    assert (
+        "UPDATE school_majors\n"
+        "SET major_strength_rank = NULL,\n"
+        "    major_strength_score = NULL,\n"
+        "    major_strength_tier = NULL,\n"
+        "    is_featured_major = FALSE,\n"
+        "    strength_evidence = '[]'::jsonb\n"
+        "WHERE NOT EXISTS ("
+    ) in schema_sql
+
+
+def test_school_major_strength_signals_table_is_declared() -> None:
+    schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
+
+    assert "CREATE TABLE IF NOT EXISTS school_major_strength_signals" in schema_sql
+    assert "signal_type     VARCHAR(50) NOT NULL" in schema_sql
+    assert "signal_level    VARCHAR(50)" in schema_sql
+    assert "strength_score  NUMERIC(6,2) NOT NULL" in schema_sql
+    assert "source_url      VARCHAR(255)" in schema_sql
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_school_major_strength_signals_unique_key" in schema_sql
+
+
 def test_special_enrollments_existing_tables_get_null_safe_conflict_target_index() -> None:
     schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
 
-    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_special_enrollments_unique_key" in schema_sql
-    assert "ON special_enrollments(enrollment_type, school_id, year, title)" in schema_sql
+    assert "DROP INDEX IF EXISTS idx_special_enrollments_unique_key" in schema_sql
+    assert "CREATE UNIQUE INDEX idx_special_enrollments_unique_key" in schema_sql
+    assert (
+        "ON special_enrollments(enrollment_type, school_id, school_code_raw, year, title, source_section, detail_url)"
+        in (schema_sql)
+    )
     assert "NULLS NOT DISTINCT" in schema_sql
 
 
@@ -25,6 +72,20 @@ def test_special_enrollments_existing_tables_get_content_text_column() -> None:
 
     assert "content_text    TEXT" in schema_sql
     assert "ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS content_text TEXT" in schema_sql
+
+
+def test_special_enrollments_existing_tables_get_chsi_strong_base_lineage_columns() -> None:
+    schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
+
+    for column_sql in (
+        "school_code_raw VARCHAR(50)",
+        "school_name_raw VARCHAR(200)",
+        "source_section VARCHAR(50)",
+        "detail_url VARCHAR(255)",
+        "milestones JSONB NOT NULL DEFAULT '{}'::jsonb",
+    ):
+        assert column_sql in schema_sql
+        assert f"ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS {column_sql}" in schema_sql
 
 
 def test_volunteer_timelines_batch_accepts_long_source_labels() -> None:
@@ -36,3 +97,39 @@ def test_volunteer_timelines_batch_accepts_long_source_labels() -> None:
         re.S,
     )
     assert "ALTER TABLE volunteer_timelines ALTER COLUMN batch TYPE VARCHAR(255)" in schema_sql
+
+
+def test_source_lineage_tables_are_declared() -> None:
+    schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
+
+    assert "CREATE TABLE IF NOT EXISTS data_sources" in schema_sql
+    assert "CREATE TABLE IF NOT EXISTS source_documents" in schema_sql
+    assert "CREATE TABLE IF NOT EXISTS entity_evidence" in schema_sql
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_data_sources_code" in schema_sql
+    assert "DROP INDEX IF EXISTS idx_source_documents_source_url_hash" in schema_sql
+    assert "CREATE UNIQUE INDEX idx_source_documents_source_url_hash" in schema_sql
+    assert "ON source_documents(data_source_id, source_url, content_hash)" in schema_sql
+    assert "CREATE INDEX IF NOT EXISTS idx_source_documents_data_source" in schema_sql
+    assert "CREATE INDEX IF NOT EXISTS idx_entity_evidence_entity" in schema_sql
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_evidence_unique_key" in schema_sql
+    assert "CREATE INDEX IF NOT EXISTS idx_entity_evidence_source_document" in schema_sql
+    assert "CHECK (authority_level BETWEEN 0 AND 100)" in schema_sql
+
+
+def test_vector_documents_view_is_declared() -> None:
+    schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
+
+    assert "CREATE OR REPLACE VIEW gaokao_source.vector_documents_v AS" in schema_sql
+    assert "CREATE OR REPLACE VIEW gaokao_source.vector_documents_source_v AS" in schema_sql
+    assert "DROP VIEW IF EXISTS gaokao_source.vector_documents_v" in schema_sql
+    assert "FROM gaokao_source.special_enrollments_v" in schema_sql
+    assert "document_uid" in schema_sql
+    assert "authority_level" in schema_sql
+    assert "metadata" in schema_sql
+    assert "COALESCE(sd.title, sd.source_url)::TEXT AS text" not in schema_sql
+    assert "COALESCE(NULLIF(sd.title, ''), '')::TEXT AS text" in schema_sql
+    assert "CONCAT_WS('\\n', NULLIF(se.title, ''), NULLIF(se.content_text, ''))::TEXT AS text" in schema_sql
+    assert "regexp_replace(sd.source_url, '[?#].*$', '')::TEXT AS source_url" in schema_sql
+    assert "'source_section', se.source_section" in schema_sql
+    assert "'detail_url', se.detail_url" in schema_sql
+    assert "'milestones', se.milestones" in schema_sql

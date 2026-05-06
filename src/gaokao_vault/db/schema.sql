@@ -53,6 +53,79 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_task ON crawl_snapshots(crawl_task_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_hash ON crawl_snapshots(entity_type, entity_id, content_hash);
 
 -- -----------------------------------------------------------
+-- 1.5 Source lineage
+-- -----------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS data_sources (
+    id              BIGSERIAL PRIMARY KEY,
+    source_code     VARCHAR(100) NOT NULL,
+    source_name     VARCHAR(200) NOT NULL,
+    source_type     VARCHAR(50) NOT NULL,
+    authority_level SMALLINT NOT NULL CHECK (authority_level BETWEEN 0 AND 100),
+    province_code   VARCHAR(20),
+    base_url        VARCHAR(255) NOT NULL,
+    enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+    metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_data_sources_code ON data_sources(source_code);
+
+DROP TRIGGER IF EXISTS update_data_sources_updated_at ON data_sources;
+CREATE TRIGGER update_data_sources_updated_at BEFORE UPDATE ON data_sources
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS source_documents (
+    id              BIGSERIAL PRIMARY KEY,
+    data_source_id  BIGINT NOT NULL REFERENCES data_sources(id),
+    source_url      VARCHAR(1000) NOT NULL,
+    title           VARCHAR(500),
+    publish_date    DATE,
+    fetched_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    content_hash    VARCHAR(64) NOT NULL,
+    content_type    VARCHAR(100),
+    storage_key     VARCHAR(500),
+    parser_name     VARCHAR(100),
+    parser_version  VARCHAR(50),
+    metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP INDEX IF EXISTS idx_source_documents_source_url_hash;
+CREATE UNIQUE INDEX idx_source_documents_source_url_hash
+    ON source_documents(data_source_id, source_url, content_hash);
+
+CREATE INDEX IF NOT EXISTS idx_source_documents_data_source
+    ON source_documents(data_source_id);
+
+DROP TRIGGER IF EXISTS update_source_documents_updated_at ON source_documents;
+CREATE TRIGGER update_source_documents_updated_at BEFORE UPDATE ON source_documents
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS entity_evidence (
+    id                   BIGSERIAL PRIMARY KEY,
+    entity_type          VARCHAR(50) NOT NULL,
+    entity_id            BIGINT NOT NULL,
+    source_document_id   BIGINT NOT NULL REFERENCES source_documents(id),
+    field_name           VARCHAR(100),
+    extracted_value_hash VARCHAR(64),
+    confidence           NUMERIC(4,3) NOT NULL DEFAULT 1.0,
+    quality_flags        JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_entity_evidence_unique_key
+    ON entity_evidence(entity_type, entity_id, source_document_id, field_name, extracted_value_hash) NULLS NOT DISTINCT;
+
+CREATE INDEX IF NOT EXISTS idx_entity_evidence_entity
+    ON entity_evidence(entity_type, entity_id);
+
+CREATE INDEX IF NOT EXISTS idx_entity_evidence_source_document
+    ON entity_evidence(source_document_id);
+
+-- -----------------------------------------------------------
 -- 2. Dimension tables
 -- -----------------------------------------------------------
 
@@ -190,6 +263,12 @@ CREATE TABLE IF NOT EXISTS school_majors (
     id              BIGSERIAL PRIMARY KEY,
     school_id       BIGINT NOT NULL REFERENCES schools(id),
     major_id        BIGINT NOT NULL REFERENCES majors(id),
+    school_major_display_order INTEGER,
+    major_strength_rank INTEGER,
+    major_strength_score NUMERIC(6,2),
+    major_strength_tier VARCHAR(50),
+    is_featured_major BOOLEAN NOT NULL DEFAULT FALSE,
+    strength_evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
     content_hash    VARCHAR(64),
     crawl_task_id   BIGINT REFERENCES crawl_tasks(id),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -198,6 +277,49 @@ CREATE TABLE IF NOT EXISTS school_majors (
 
 CREATE INDEX IF NOT EXISTS idx_school_majors_major ON school_majors(major_id);
 CREATE INDEX IF NOT EXISTS idx_school_majors_school ON school_majors(school_id);
+CREATE INDEX IF NOT EXISTS idx_school_majors_featured
+    ON school_majors(school_id, is_featured_major, major_strength_rank, major_strength_score DESC);
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS school_major_display_order INTEGER;
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_rank INTEGER;
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_score NUMERIC(6,2);
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS major_strength_tier VARCHAR(50);
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS is_featured_major BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS strength_evidence JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+CREATE TABLE IF NOT EXISTS school_major_strength_signals (
+    id              BIGSERIAL PRIMARY KEY,
+    school_id       BIGINT NOT NULL REFERENCES schools(id),
+    major_id        BIGINT NOT NULL REFERENCES majors(id),
+    signal_type     VARCHAR(50) NOT NULL,
+    signal_level    VARCHAR(50),
+    strength_score  NUMERIC(6,2) NOT NULL,
+    source_url      VARCHAR(255),
+    evidence_title  VARCHAR(200),
+    evidence_year   SMALLINT,
+    content_hash    VARCHAR(64),
+    crawl_task_id   BIGINT REFERENCES crawl_tasks(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_school_major_strength_signals_unique_key
+    ON school_major_strength_signals(school_id, major_id, signal_type, signal_level, evidence_year)
+    NULLS NOT DISTINCT;
+CREATE INDEX IF NOT EXISTS idx_school_major_strength_signals_school_major
+    ON school_major_strength_signals(school_id, major_id, strength_score DESC);
+
+UPDATE school_majors
+SET major_strength_rank = NULL,
+    major_strength_score = NULL,
+    major_strength_tier = NULL,
+    is_featured_major = FALSE,
+    strength_evidence = '[]'::jsonb
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM school_major_strength_signals sms
+    WHERE sms.school_id = school_majors.school_id
+      AND sms.major_id = school_majors.major_id
+);
 
 CREATE TABLE IF NOT EXISTS major_satisfaction (
     id              BIGSERIAL PRIMARY KEY,
@@ -485,16 +607,21 @@ CREATE TABLE IF NOT EXISTS special_enrollments (
     special_admission_type VARCHAR(50),
     province_code   VARCHAR(20),
     school_id       BIGINT REFERENCES schools(id),
+    school_code_raw VARCHAR(50),
+    school_name_raw VARCHAR(200),
     year            SMALLINT NOT NULL,
     title           VARCHAR(200),
     content         TEXT,
     content_text    TEXT,
     publish_date    DATE,
     source_url      VARCHAR(255),
+    source_section  VARCHAR(50),
+    detail_url      VARCHAR(255),
     application_url VARCHAR(255),
     registration_window JSONB NOT NULL DEFAULT '{}'::jsonb,
     registration_start DATE,
     registration_end DATE,
+    milestones      JSONB NOT NULL DEFAULT '{}'::jsonb,
     shortlist_rule  TEXT,
     selection_rule  TEXT,
     school_assessment TEXT,
@@ -511,16 +638,18 @@ CREATE TABLE IF NOT EXISTS special_enrollments (
 
 CREATE INDEX IF NOT EXISTS idx_special_type_year ON special_enrollments(enrollment_type, year);
 CREATE INDEX IF NOT EXISTS idx_special_school ON special_enrollments(school_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_special_enrollments_unique_key
-    ON special_enrollments(enrollment_type, school_id, year, title) NULLS NOT DISTINCT;
-
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS special_admission_type VARCHAR(50);
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS province_code VARCHAR(20);
+ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS school_code_raw VARCHAR(50);
+ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS school_name_raw VARCHAR(200);
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS content_text TEXT;
+ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS source_section VARCHAR(50);
+ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS detail_url VARCHAR(255);
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS application_url VARCHAR(255);
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS registration_window JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS registration_start DATE;
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS registration_end DATE;
+ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS milestones JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS shortlist_rule TEXT;
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS selection_rule TEXT;
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS school_assessment TEXT;
@@ -529,6 +658,11 @@ ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS composite_score_formula
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS admission_rule TEXT;
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS eligible_majors JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE special_enrollments ADD COLUMN IF NOT EXISTS quality_flags JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+DROP INDEX IF EXISTS idx_special_enrollments_unique_key;
+CREATE UNIQUE INDEX idx_special_enrollments_unique_key
+    ON special_enrollments(enrollment_type, school_id, school_code_raw, year, title, source_section, detail_url)
+    NULLS NOT DISTINCT;
 
 DROP TRIGGER IF EXISTS update_special_enrollments_updated_at ON special_enrollments;
 CREATE TRIGGER update_special_enrollments_updated_at BEFORE UPDATE ON special_enrollments
@@ -560,6 +694,110 @@ CREATE TRIGGER update_provincial_announcements_updated_at BEFORE UPDATE ON provi
 -- -----------------------------------------------------------
 
 CREATE SCHEMA IF NOT EXISTS gaokao_source;
+
+DROP VIEW IF EXISTS gaokao_source.vector_documents_v;
+
+CREATE OR REPLACE VIEW gaokao_source.vector_documents_source_v AS
+SELECT
+    CONCAT('source_document:', sd.id)::TEXT AS document_uid,
+    'source_document'::TEXT AS document_type,
+    NULL::TEXT AS entity_type,
+    NULL::BIGINT AS entity_id,
+    sd.title,
+    COALESCE(NULLIF(sd.title, ''), '')::TEXT AS text,
+    jsonb_build_object(
+        'source_type', ds.source_type,
+        'province_code', ds.province_code,
+        'source_name', ds.source_name,
+        'content_type', sd.content_type,
+        'parser_name', sd.parser_name,
+        'parser_version', sd.parser_version,
+        'publish_date', sd.publish_date,
+        'fetched_at', sd.fetched_at
+    ) AS metadata,
+    regexp_replace(sd.source_url, '[?#].*$', '')::TEXT AS source_url,
+    ds.source_code,
+    ds.authority_level,
+    sd.content_hash,
+    sd.fetched_at
+FROM source_documents sd
+JOIN data_sources ds ON ds.id = sd.data_source_id;
+
+CREATE OR REPLACE VIEW gaokao_source.special_enrollments_v AS
+SELECT
+    CONCAT('special_enrollment:', se.id)::TEXT AS document_uid,
+    'special_enrollment'::TEXT AS document_type,
+    CASE
+        WHEN se.school_id IS NOT NULL THEN 'school'
+        ELSE NULL
+    END::TEXT AS entity_type,
+    se.school_id AS entity_id,
+    se.title,
+    CONCAT_WS('\n', NULLIF(se.title, ''), NULLIF(se.content_text, ''))::TEXT AS text,
+    jsonb_build_object(
+        'enrollment_type', se.enrollment_type,
+        'special_admission_type', se.special_admission_type,
+        'province_code', se.province_code,
+        'school_code_raw', se.school_code_raw,
+        'school_name_raw', se.school_name_raw,
+        'year', se.year,
+        'source_section', se.source_section,
+        'detail_url', se.detail_url,
+        'application_url', se.application_url,
+        'registration_window', se.registration_window,
+        'registration_start', se.registration_start,
+        'registration_end', se.registration_end,
+        'milestones', se.milestones,
+        'shortlist_rule', se.shortlist_rule,
+        'selection_rule', se.selection_rule,
+        'school_assessment', se.school_assessment,
+        'school_exam_rule', se.school_exam_rule,
+        'composite_score_formula', se.composite_score_formula,
+        'admission_rule', se.admission_rule,
+        'eligible_majors', se.eligible_majors,
+        'publish_date', se.publish_date,
+        'source_url', se.source_url
+    ) AS metadata,
+    regexp_replace(COALESCE(se.source_url, ''), '[?#].*$', '')::TEXT AS source_url,
+    CASE
+        WHEN se.enrollment_type = '强基计划' THEN 'special_enrollments.strong_foundation'
+        ELSE 'special_enrollments'
+    END AS source_code,
+    95::INTEGER AS authority_level,
+    se.content_hash,
+    COALESCE(se.updated_at, se.created_at) AS fetched_at
+FROM special_enrollments se;
+
+CREATE OR REPLACE VIEW gaokao_source.vector_documents_v AS
+SELECT
+    document_uid,
+    document_type,
+    entity_type,
+    entity_id,
+    title,
+    text,
+    metadata,
+    source_url,
+    source_code,
+    authority_level,
+    content_hash,
+    fetched_at
+FROM gaokao_source.vector_documents_source_v
+UNION ALL
+SELECT
+    document_uid,
+    document_type,
+    entity_type,
+    entity_id,
+    title,
+    text,
+    metadata,
+    source_url,
+    source_code,
+    authority_level,
+    content_hash,
+    fetched_at
+FROM gaokao_source.special_enrollments_v;
 
 CREATE OR REPLACE VIEW gaokao_source.schools_v AS
 SELECT
@@ -619,17 +857,25 @@ SELECT
     ) AS major_notes,
     mar.major_group_code,
     mar.major_code_raw,
+    sm.school_major_display_order,
+    sm.major_strength_rank,
+    sm.major_strength_score,
+    sm.major_strength_tier,
+    COALESCE(sm.is_featured_major, FALSE) AS is_featured_major,
+    sm.strength_evidence,
     mar.campus,
     mar.program_type,
     mar.eligibility_requirements,
     mar.physical_exam_or_political_review,
     mar.political_review_requirement,
     mar.service_obligation,
+    NULL::TEXT AS selection_requirement,
     mar.source_url,
     mar.data_source,
     'major_admission_results'::TEXT AS evidence_source
 FROM major_admission_results mar
 JOIN provinces p ON p.id = mar.province_id
+LEFT JOIN school_majors sm ON sm.school_id = mar.school_id AND sm.major_id = mar.major_id
 UNION ALL
 SELECT
     p.code AS province_code,
@@ -658,17 +904,25 @@ SELECT
     ) AS major_notes,
     ep.major_group_code,
     ep.major_code_raw,
+    sm.school_major_display_order,
+    sm.major_strength_rank,
+    sm.major_strength_score,
+    sm.major_strength_tier,
+    COALESCE(sm.is_featured_major, FALSE) AS is_featured_major,
+    sm.strength_evidence,
     ep.campus,
     ep.program_type,
     ep.eligibility_requirements,
     ep.physical_exam_or_political_review,
     ep.political_review_requirement,
     ep.service_obligation,
+    ep.selection_requirement,
     ep.source_url,
     ep.data_source,
     'enrollment_plans'::TEXT AS evidence_source
 FROM enrollment_plans ep
-JOIN provinces p ON p.id = ep.province_id;
+JOIN provinces p ON p.id = ep.province_id
+LEFT JOIN school_majors sm ON sm.school_id = ep.school_id AND sm.major_id = ep.major_id;
 
 CREATE OR REPLACE VIEW gaokao_source.province_rules_v AS
 WITH batch_rows AS (

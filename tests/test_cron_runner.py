@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from gaokao_vault.config import AppConfig, ScheduleConfig
-from gaokao_vault.constants import PHASE2_TYPES, PHASE3_TYPES
 from gaokao_vault.scheduler.cron_runner import CronExpression, IncrementalCronScheduler
 
 
@@ -67,6 +66,7 @@ def test_scheduler_runs_configured_types_incrementally() -> None:
     with (
         patch("gaokao_vault.db.connection.create_pool", new=AsyncMock(return_value=fake_pool)) as create_pool,
         patch("gaokao_vault.db.connection.close_pool", new=AsyncMock()) as close_pool,
+        patch("gaokao_vault.db.queries.crawl_meta.fail_stale_running_tasks", new=AsyncMock(return_value=0)),
         patch("gaokao_vault.scheduler.orchestrator.Orchestrator", return_value=orchestrator) as orchestrator_cls,
     ):
         asyncio.run(scheduler._run_incremental_crawl(datetime(2026, 4, 23, 14, 0)))
@@ -80,7 +80,7 @@ def test_scheduler_runs_configured_types_incrementally() -> None:
     close_pool.assert_awaited_once()
 
 
-def test_scheduler_runs_all_types_independently_by_default() -> None:
+def test_scheduler_runs_all_types_with_phase_order_by_default() -> None:
     config = AppConfig()
     scheduler = IncrementalCronScheduler(config)
     fake_pool = MagicMock()
@@ -92,11 +92,32 @@ def test_scheduler_runs_all_types_independently_by_default() -> None:
     with (
         patch("gaokao_vault.db.connection.create_pool", new=AsyncMock(return_value=fake_pool)),
         patch("gaokao_vault.db.connection.close_pool", new=AsyncMock()),
+        patch("gaokao_vault.db.queries.crawl_meta.fail_stale_running_tasks", new=AsyncMock(return_value=0)),
         patch("gaokao_vault.scheduler.orchestrator.Orchestrator", return_value=orchestrator),
     ):
         asyncio.run(scheduler._run_incremental_crawl(datetime(2026, 4, 23, 14, 0)))
 
-    expected_types = [task_type.value for task_type in [*PHASE2_TYPES, *PHASE3_TYPES]]
-    orchestrator.run_independent.assert_awaited_once_with(expected_types, max_concurrent=3)
+    orchestrator.run_all.assert_awaited_once()
+    orchestrator.run_independent.assert_not_called()
     orchestrator.run_types.assert_not_called()
-    orchestrator.run_all.assert_not_called()
+
+
+def test_scheduler_recovers_stale_running_tasks_before_default_crawl() -> None:
+    config = AppConfig()
+    scheduler = IncrementalCronScheduler(config)
+    fake_pool = MagicMock()
+    orchestrator = MagicMock()
+    orchestrator.run_all = AsyncMock()
+
+    with (
+        patch("gaokao_vault.db.connection.create_pool", new=AsyncMock(return_value=fake_pool)),
+        patch("gaokao_vault.db.connection.close_pool", new=AsyncMock()),
+        patch(
+            "gaokao_vault.db.queries.crawl_meta.fail_stale_running_tasks",
+            new=AsyncMock(return_value=2),
+        ) as fail_stale,
+        patch("gaokao_vault.scheduler.orchestrator.Orchestrator", return_value=orchestrator),
+    ):
+        asyncio.run(scheduler._run_incremental_crawl(datetime(2026, 4, 23, 14, 0)))
+
+    fail_stale.assert_awaited_once_with(fake_pool, stale_after_seconds=config.crawl.spider_timeout)
