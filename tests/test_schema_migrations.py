@@ -162,3 +162,15 @@ def test_vector_documents_view_is_declared() -> None:
     assert "'source_section', se.source_section" in schema_sql
     assert "'detail_url', se.detail_url" in schema_sql
     assert "'milestones', se.milestones" in schema_sql
+
+
+def test_admission_records_view_is_dropped_before_recreate_to_allow_column_order_changes() -> None:
+    schema_sql = _normalize_sql(Path("src/gaokao_vault/db/schema.sql").read_text())
+    drop_view_sql = "DROP VIEW IF EXISTS gaokao_source.admission_records_v"
+    create_view_sql = "CREATE OR REPLACE VIEW gaokao_source.admission_records_v AS"
+
+    assert drop_view_sql in schema_sql
+    assert create_view_sql in schema_sql
+    assert schema_sql.count(drop_view_sql) == 1
+    assert schema_sql.count(create_view_sql) == 1
+    assert schema_sql.find(drop_view_sql) < schema_sql.find(create_view_sql)

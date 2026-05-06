@@ -834,6 +834,7 @@ FROM majors m
 LEFT JOIN major_subcategories ms ON ms.id = m.subcategory_id
 LEFT JOIN major_categories mc ON mc.id = COALESCE(ms.category_id, m.category_id);
 
+DROP VIEW IF EXISTS gaokao_source.admission_records_v;
 CREATE OR REPLACE VIEW gaokao_source.admission_records_v AS
 SELECT
     p.code AS province_code,
