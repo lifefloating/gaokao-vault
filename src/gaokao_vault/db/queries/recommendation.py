@@ -204,6 +204,8 @@ async def find_candidate_admission_chain(
             mc.major_id,
             m.code AS major_code,
             m.name AS major_name,
+            sm.school_major_rank,
+            COALESCE(sm.is_featured_major, FALSE) AS is_featured_major,
             COALESCE(plans.primary_major_group_code, history.primary_major_group_code) AS major_group_code,
             COALESCE(plans.primary_major_code_raw, history.primary_major_code_raw) AS major_code_raw,
             COALESCE(plans.primary_campus, history.primary_campus) AS campus,
@@ -230,13 +232,16 @@ async def find_candidate_admission_chain(
         FROM matched_candidates mc
         JOIN schools s ON s.id = mc.school_id
         JOIN majors m ON m.id = mc.major_id
+        LEFT JOIN school_majors sm
+          ON sm.school_id = mc.school_id
+         AND sm.major_id = mc.major_id
         LEFT JOIN current_plans plans
           ON plans.school_id = mc.school_id
          AND plans.major_id = mc.major_id
         LEFT JOIN admission_history history
           ON history.school_id = mc.school_id
          AND history.major_id = mc.major_id
-        ORDER BY history.rank_distance NULLS LAST, s.name, m.name
+        ORDER BY history.rank_distance NULLS LAST, sm.school_major_rank NULLS LAST, s.name, m.name
         """,
         profile.province_id,
         profile.year,

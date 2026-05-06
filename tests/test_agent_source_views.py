@@ -30,6 +30,8 @@ def test_admission_records_view_contains_major_level_evidence_columns() -> None:
         "plan_count",
         "major_notes",
         "major_group_code",
+        "school_major_rank",
+        "is_featured_major",
         "program_type",
         "eligibility_requirements",
         "physical_exam_or_political_review",

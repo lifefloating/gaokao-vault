@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 _HREF_CODE_PATTERN = re.compile(r"(?:code|zydm|specialityCode)-([A-Za-z0-9]+)")
 SCHOOL_MAJOR_URL_TEMPLATE = f"{BASE_URL}/sch/listzyjs--schId-{{sch_id}},categoryId-417877,mindex-3.dhtml"
+FEATURED_MAJOR_RANK_CUTOFF = 3
 
 
 class SchoolMajorSpider(BaseGaokaoSpider):
@@ -241,8 +242,9 @@ class SchoolMajorSpider(BaseGaokaoSpider):
         if not school_id or not sch_id:
             return
 
+        candidates = self._extract_major_candidates(response)
         async with (await self._get_pool()).acquire() as conn:
-            for candidate in self._extract_major_candidates(response):
+            for index, candidate in enumerate(candidates, start=1):
                 major_id = await self._resolve_major_id(
                     conn,
                     school_id=school_id,
@@ -256,7 +258,12 @@ class SchoolMajorSpider(BaseGaokaoSpider):
                 if major_id is None:
                     continue
 
-                data = {"school_id": school_id, "major_id": major_id}
+                data = {
+                    "school_id": school_id,
+                    "major_id": major_id,
+                    "school_major_rank": index,
+                    "is_featured_major": index <= FEATURED_MAJOR_RANK_CUTOFF,
+                }
                 item = validate_item(SchoolMajorItem, data)
                 if item:
                     yield item

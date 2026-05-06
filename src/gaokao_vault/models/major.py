@@ -34,6 +34,8 @@ class MajorItem(BaseModel):
 class SchoolMajorItem(BaseModel):
     school_id: int
     major_id: int
+    school_major_rank: int | None = None
+    is_featured_major: bool = False
 
 
 class MajorSatisfactionItem(BaseModel):

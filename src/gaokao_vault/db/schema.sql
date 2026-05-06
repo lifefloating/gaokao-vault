@@ -263,6 +263,8 @@ CREATE TABLE IF NOT EXISTS school_majors (
     id              BIGSERIAL PRIMARY KEY,
     school_id       BIGINT NOT NULL REFERENCES schools(id),
     major_id        BIGINT NOT NULL REFERENCES majors(id),
+    school_major_rank INTEGER,
+    is_featured_major BOOLEAN NOT NULL DEFAULT FALSE,
     content_hash    VARCHAR(64),
     crawl_task_id   BIGINT REFERENCES crawl_tasks(id),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -271,6 +273,9 @@ CREATE TABLE IF NOT EXISTS school_majors (
 
 CREATE INDEX IF NOT EXISTS idx_school_majors_major ON school_majors(major_id);
 CREATE INDEX IF NOT EXISTS idx_school_majors_school ON school_majors(school_id);
+CREATE INDEX IF NOT EXISTS idx_school_majors_featured ON school_majors(school_id, is_featured_major, school_major_rank);
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS school_major_rank INTEGER;
+ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS is_featured_major BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS major_satisfaction (
     id              BIGSERIAL PRIMARY KEY,
@@ -808,6 +813,8 @@ SELECT
     ) AS major_notes,
     mar.major_group_code,
     mar.major_code_raw,
+    sm.school_major_rank,
+    COALESCE(sm.is_featured_major, FALSE) AS is_featured_major,
     mar.campus,
     mar.program_type,
     mar.eligibility_requirements,
@@ -820,6 +827,7 @@ SELECT
     'major_admission_results'::TEXT AS evidence_source
 FROM major_admission_results mar
 JOIN provinces p ON p.id = mar.province_id
+LEFT JOIN school_majors sm ON sm.school_id = mar.school_id AND sm.major_id = mar.major_id
 UNION ALL
 SELECT
     p.code AS province_code,
@@ -848,6 +856,8 @@ SELECT
     ) AS major_notes,
     ep.major_group_code,
     ep.major_code_raw,
+    sm.school_major_rank,
+    COALESCE(sm.is_featured_major, FALSE) AS is_featured_major,
     ep.campus,
     ep.program_type,
     ep.eligibility_requirements,
@@ -859,7 +869,8 @@ SELECT
     ep.data_source,
     'enrollment_plans'::TEXT AS evidence_source
 FROM enrollment_plans ep
-JOIN provinces p ON p.id = ep.province_id;
+JOIN provinces p ON p.id = ep.province_id
+LEFT JOIN school_majors sm ON sm.school_id = ep.school_id AND sm.major_id = ep.major_id;
 
 CREATE OR REPLACE VIEW gaokao_source.province_rules_v AS
 WITH batch_rows AS (

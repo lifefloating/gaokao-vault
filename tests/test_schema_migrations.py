@@ -12,6 +12,18 @@ def test_enrollment_plans_existing_tables_get_conflict_target_index() -> None:
     assert "NULLS NOT DISTINCT" in schema_sql
 
 
+def test_school_majors_existing_tables_get_school_major_ranking_columns() -> None:
+    schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
+
+    assert "school_major_rank INTEGER" in schema_sql
+    assert "is_featured_major BOOLEAN NOT NULL DEFAULT FALSE" in schema_sql
+    assert "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS school_major_rank INTEGER" in schema_sql
+    assert (
+        "ALTER TABLE school_majors ADD COLUMN IF NOT EXISTS is_featured_major BOOLEAN NOT NULL DEFAULT FALSE"
+        in schema_sql
+    )
+
+
 def test_special_enrollments_existing_tables_get_null_safe_conflict_target_index() -> None:
     schema_sql = Path("src/gaokao_vault/db/schema.sql").read_text()
 

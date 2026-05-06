@@ -68,14 +68,20 @@ async def upsert_major(conn: asyncpg.Connection, data: dict) -> int:
 async def upsert_school_major(conn: asyncpg.Connection, data: dict) -> int:
     row = await conn.fetchrow(
         """
-        INSERT INTO school_majors (school_id, major_id, content_hash, crawl_task_id)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO school_majors (school_id, major_id, school_major_rank, is_featured_major,
+            content_hash, crawl_task_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (school_id, major_id) DO UPDATE SET
-            content_hash=EXCLUDED.content_hash, crawl_task_id=EXCLUDED.crawl_task_id
+            school_major_rank=EXCLUDED.school_major_rank,
+            is_featured_major=EXCLUDED.is_featured_major,
+            content_hash=EXCLUDED.content_hash,
+            crawl_task_id=EXCLUDED.crawl_task_id
         RETURNING id
         """,
         data["school_id"],
         data["major_id"],
+        data.get("school_major_rank"),
+        data.get("is_featured_major", False),
         data.get("content_hash"),
         data.get("crawl_task_id"),
     )
