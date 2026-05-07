@@ -8,7 +8,20 @@ import asyncpg
 COMPLETENESS_YEAR_WINDOW = 3
 CURRENT_YEAR_READY_MONTH = 12
 
-_MAJOR_ANSWER_READINESS_CTE_SQL = """
+_MAJOR_NAME_NORMALIZATION_PATTERN_SQL = "CONCAT('[', CHR(65288), '(].*[', CHR(65289), ')]|\\s+|专业|类')"
+
+
+def _normalized_major_name_sql(value_sql: str) -> str:
+    return f"LOWER(REGEXP_REPLACE({value_sql}, {_MAJOR_NAME_NORMALIZATION_PATTERN_SQL}, '', 'g'))"
+
+
+_NORMALIZED_PLAN_MAJOR_NAME_SQL = _normalized_major_name_sql("COALESCE(plan_major.name, ep.major_name, '')")
+_NORMALIZED_ADMISSION_MAJOR_NAME_SQL = _normalized_major_name_sql("COALESCE(mar.major_name_raw, adm_major.name, '')")
+
+_PLAN_MAJOR_NAME_PLACEHOLDER = "__NORMALIZED_PLAN_MAJOR_NAME_SQL__"
+_ADMISSION_MAJOR_NAME_PLACEHOLDER = "__NORMALIZED_ADMISSION_MAJOR_NAME_SQL__"
+
+_MAJOR_ANSWER_READINESS_CTE_SQL_TEMPLATE = """
         WITH target_province AS (
             SELECT id, code, name
             FROM provinces
@@ -22,12 +35,7 @@ _MAJOR_ANSWER_READINESS_CTE_SQL = """
                 ep.school_id,
                 ep.major_id,
                 COALESCE(plan_major.name, ep.major_name) AS major_name,
-                LOWER(REGEXP_REPLACE(
-                    COALESCE(plan_major.name, ep.major_name, ''),
-                    CONCAT('[', CHR(65288), '(].*[', CHR(65289), ')]|\\s+|专业|类'),
-                    '',
-                    'g'
-                )) AS normalized_major_name,
+                __NORMALIZED_PLAN_MAJOR_NAME_SQL__ AS normalized_major_name,
                 ep.plan_count,
                 ARRAY_REMOVE(ARRAY[ep.major_group_code], NULL::VARCHAR) AS major_group_codes,
                 ARRAY_REMOVE(ARRAY[ep.major_code_raw], NULL::VARCHAR) AS major_code_raws,
@@ -68,12 +76,7 @@ _MAJOR_ANSWER_READINESS_CTE_SQL = """
         admission_by_normalized_name AS (
             SELECT
                 mar.school_id,
-                LOWER(REGEXP_REPLACE(
-                    COALESCE(mar.major_name_raw, adm_major.name, ''),
-                    CONCAT('[', CHR(65288), '(].*[', CHR(65289), ')]|\\s+|专业|类'),
-                    '',
-                    'g'
-                )) AS normalized_major_name,
+                __NORMALIZED_ADMISSION_MAJOR_NAME_SQL__ AS normalized_major_name,
                 COUNT(DISTINCT mar.year) FILTER (WHERE mar.min_score IS NOT NULL) AS years_with_min_score,
                 COUNT(DISTINCT mar.year) FILTER (WHERE mar.min_rank IS NOT NULL) AS years_with_min_rank,
                 MAX(mar.year) FILTER (WHERE mar.min_score IS NOT NULL) AS latest_min_score_year,
@@ -93,12 +96,7 @@ _MAJOR_ANSWER_READINESS_CTE_SQL = """
               AND ($5::TEXT IS NULL OR mar.batch = $5 OR mar.batch_category = $5)
             GROUP BY
                 mar.school_id,
-                LOWER(REGEXP_REPLACE(
-                    COALESCE(mar.major_name_raw, adm_major.name, ''),
-                    CONCAT('[', CHR(65288), '(].*[', CHR(65289), ')]|\\s+|专业|类'),
-                    '',
-                    'g'
-                ))
+                __NORMALIZED_ADMISSION_MAJOR_NAME_SQL__
         ),
         strength_summary AS (
             SELECT
@@ -212,6 +210,9 @@ _MAJOR_ANSWER_READINESS_CTE_SQL = """
              AND strength.major_id IS NOT DISTINCT FROM tpl.major_id
         )
 """
+_MAJOR_ANSWER_READINESS_CTE_SQL = _MAJOR_ANSWER_READINESS_CTE_SQL_TEMPLATE.replace(
+    _PLAN_MAJOR_NAME_PLACEHOLDER, _NORMALIZED_PLAN_MAJOR_NAME_SQL
+).replace(_ADMISSION_MAJOR_NAME_PLACEHOLDER, _NORMALIZED_ADMISSION_MAJOR_NAME_SQL)
 
 # Static SQL fragments only; user input stays in asyncpg bind parameters.
 _MAJOR_ANSWER_READINESS_GAPS_SQL = "".join((
@@ -256,7 +257,7 @@ _MAJOR_ANSWER_READINESS_SUMMARY_SQL = "".join((
         """,
 ))
 
-_MAJOR_ANSWER_READINESS_MATCH_DIAGNOSTICS_SQL = """
+_MAJOR_ANSWER_READINESS_MATCH_DIAGNOSTICS_SQL_TEMPLATE = """
         WITH target_province AS (
             SELECT id, code, name
             FROM provinces
@@ -265,47 +266,32 @@ _MAJOR_ANSWER_READINESS_MATCH_DIAGNOSTICS_SQL = """
             LIMIT 1
         ),
         target_plans AS (
-            SELECT
+            SELECT DISTINCT
                 ep.school_id,
                 ep.major_id,
                 COALESCE(plan_major.name, ep.major_name) AS major_name,
-                LOWER(REGEXP_REPLACE(
-                    COALESCE(plan_major.name, ep.major_name, ''),
-                    CONCAT('[', CHR(65288), '(].*[', CHR(65289), ')]|\\s+|专业|类'),
-                    '',
-                    'g'
-                )) AS normalized_major_name
+                __NORMALIZED_PLAN_MAJOR_NAME_SQL__ AS normalized_major_name
             FROM enrollment_plans ep
             JOIN target_province tp ON tp.id = ep.province_id
             LEFT JOIN majors plan_major ON plan_major.id = ep.major_id
             WHERE ep.year = $2
               AND ($4::INTEGER IS NULL OR ep.subject_category_id IS NOT DISTINCT FROM $4)
               AND ($5::TEXT IS NULL OR ep.batch = $5 OR ep.batch_category = $5)
-            GROUP BY ep.school_id, ep.major_id, COALESCE(plan_major.name, ep.major_name)
         ),
         admission_records AS (
             SELECT
                 mar.school_id,
                 mar.major_id,
                 COALESCE(mar.major_name_raw, adm_major.name) AS major_name,
-                LOWER(REGEXP_REPLACE(
-                    COALESCE(mar.major_name_raw, adm_major.name, ''),
-                    CONCAT('[', CHR(65288), '(].*[', CHR(65289), ')]|\\s+|专业|类'),
-                    '',
-                    'g'
-                )) AS normalized_major_name,
-                BOOL_OR(mar.min_score IS NOT NULL) AS has_min_score,
-                BOOL_OR(mar.min_rank IS NOT NULL) AS has_min_rank
+                __NORMALIZED_ADMISSION_MAJOR_NAME_SQL__ AS normalized_major_name,
+                mar.min_score IS NOT NULL AS has_min_score,
+                mar.min_rank IS NOT NULL AS has_min_rank
             FROM major_admission_results mar
             JOIN target_province tp ON tp.id = mar.province_id
             LEFT JOIN majors adm_major ON adm_major.id = mar.major_id
             WHERE mar.year = ANY($3::INTEGER[])
               AND ($4::INTEGER IS NULL OR mar.subject_category_id IS NOT DISTINCT FROM $4)
               AND ($5::TEXT IS NULL OR mar.batch = $5 OR mar.batch_category = $5)
-            GROUP BY
-                mar.school_id,
-                mar.major_id,
-                COALESCE(mar.major_name_raw, adm_major.name)
         ),
         exact_matches AS (
             SELECT
@@ -371,6 +357,10 @@ _MAJOR_ANSWER_READINESS_MATCH_DIAGNOSTICS_SQL = """
          AND normalized_name_matches.major_id IS NOT DISTINCT FROM tpl.major_id
          AND normalized_name_matches.major_name IS NOT DISTINCT FROM tpl.major_name
         """
+_MAJOR_ANSWER_READINESS_MATCH_DIAGNOSTICS_SQL = _MAJOR_ANSWER_READINESS_MATCH_DIAGNOSTICS_SQL_TEMPLATE.replace(
+    _PLAN_MAJOR_NAME_PLACEHOLDER,
+    _NORMALIZED_PLAN_MAJOR_NAME_SQL,
+).replace(_ADMISSION_MAJOR_NAME_PLACEHOLDER, _NORMALIZED_ADMISSION_MAJOR_NAME_SQL)
 
 _MAJOR_STRENGTH_SIGNAL_DIAGNOSTICS_SQL = """
         WITH target_province AS (

@@ -4,6 +4,7 @@ import asyncio
 from datetime import date
 from typing import Any, cast
 
+from gaokao_vault.db.queries import data_quality
 from gaokao_vault.db.queries.data_quality import (
     fetch_major_answer_readiness_gaps,
     fetch_major_answer_readiness_match_diagnostics,
@@ -266,6 +267,62 @@ def test_fetch_major_answer_readiness_match_diagnostics_compares_exact_and_norma
     assert "UPDATE" not in conn.query.upper()
     assert "DELETE" not in conn.query.upper()
     assert conn.args == ("吉林", 2025, [2023, 2024, 2025], 3, "本科批")
+
+
+def test_major_answer_readiness_match_diagnostics_does_not_group_unaggregated_normalized_names() -> None:
+    conn = _FakeConnection()
+
+    asyncio.run(
+        fetch_major_answer_readiness_match_diagnostics(
+            cast(Any, conn),
+            province="吉林",
+            plan_year=2025,
+            admission_years=[2023, 2024, 2025],
+            subject_category_id=3,
+            batch="本科批",
+        )
+    )
+
+    target_plans_sql = conn.query.split("target_plans AS (", 1)[1].split("),\n        admission_records AS", 1)[0]
+    admission_records_sql = conn.query.split("admission_records AS (", 1)[1].split("),\n        exact_matches AS", 1)[0]
+
+    assert "GROUP BY ep.school_id, ep.major_id, COALESCE(plan_major.name, ep.major_name)" not in target_plans_sql
+    assert "GROUP BY\n                mar.school_id" not in admission_records_sql
+
+
+def test_major_answer_readiness_queries_share_one_normalized_major_name_sql_fragment() -> None:
+    conn = _FakeConnection()
+
+    asyncio.run(
+        fetch_major_answer_readiness_gaps(
+            cast(Any, conn),
+            province="吉林",
+            plan_year=2026,
+            admission_years=[2023, 2024, 2025],
+            subject_category_id=3,
+            batch="本科批",
+        )
+    )
+
+    readiness_query = conn.query
+    asyncio.run(
+        fetch_major_answer_readiness_match_diagnostics(
+            cast(Any, conn),
+            province="吉林",
+            plan_year=2025,
+            admission_years=[2023, 2024, 2025],
+            subject_category_id=3,
+            batch="本科批",
+        )
+    )
+
+    plan_expression = data_quality._normalized_major_name_sql("COALESCE(plan_major.name, ep.major_name, '')")
+    admission_expression = data_quality._normalized_major_name_sql("COALESCE(mar.major_name_raw, adm_major.name, '')")
+
+    assert plan_expression in readiness_query
+    assert admission_expression in readiness_query
+    assert plan_expression in conn.query
+    assert admission_expression in conn.query
 
 
 def test_fetch_major_strength_signal_diagnostics_counts_signal_and_rollup_coverage() -> None:
