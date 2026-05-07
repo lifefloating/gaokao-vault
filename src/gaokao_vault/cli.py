@@ -254,6 +254,65 @@ def _print_completeness_gaps(rows: list[dict]) -> None:
 
 
 @app.command()
+def audit_major_readiness(
+    province: Annotated[str, typer.Option("--province", "-p", help="Province code or name")] = "吉林",
+    plan_year: Annotated[int, typer.Option("--plan-year", help="Enrollment plan year to audit")] = 2026,
+    years: Annotated[list[int] | None, typer.Option("--year", "-y", help="Admission years to require")] = None,
+    subject_category_id: Annotated[int | None, typer.Option("--subject-category-id")] = None,
+    batch: Annotated[str | None, typer.Option("--batch", help="Batch name/category to audit")] = None,
+    limit: Annotated[int, typer.Option("--limit", "-n", help="Maximum major gaps to print")] = 50,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False,
+) -> None:
+    """Audit whether major-level answers have scores, plans, selection requirements, and strength evidence."""
+    _setup_logging(verbose)
+
+    from gaokao_vault.db.queries.data_quality import normalize_completeness_years
+
+    admission_years = normalize_completeness_years(years)
+
+    async def _run():
+        from gaokao_vault.db.connection import close_pool, create_pool
+        from gaokao_vault.db.queries.data_quality import fetch_major_answer_readiness_gaps
+
+        pool = await create_pool()
+        try:
+            async with pool.acquire() as conn:
+                rows = await fetch_major_answer_readiness_gaps(
+                    conn,
+                    province=province,
+                    plan_year=plan_year,
+                    admission_years=admission_years,
+                    subject_category_id=subject_category_id,
+                    batch=batch,
+                    limit=limit,
+                )
+        finally:
+            await close_pool()
+
+        _print_major_readiness_gaps(rows)
+
+    asyncio.run(_run())
+
+
+def _print_major_readiness_gaps(rows: list[dict]) -> None:
+    typer.echo("Major answer readiness gaps")
+    if not rows:
+        typer.echo("  None in requested scope.")
+        return
+
+    for row in rows:
+        flags = ",".join(row.get("readiness_flags") or [])
+        typer.echo(
+            "  "
+            f"{row.get('school_name')} {row.get('major_name')}: "
+            f"flags={flags} "
+            f"plan_count={row.get('plan_count')} "
+            f"latest_min_score={row.get('latest_min_score')} "
+            f"latest_min_rank={row.get('latest_min_rank')}"
+        )
+
+
+@app.command()
 def schedule(
     mode: Annotated[str | None, typer.Option("--mode", "-m", help="full or incremental")] = None,
     types: Annotated[list[str] | None, typer.Option("--types", "-t", help="Specific task types")] = None,

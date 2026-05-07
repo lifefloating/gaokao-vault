@@ -34,6 +34,10 @@ class TestAuditCompletenessCommandRegistered:
         func_names = [getattr(cmd.callback, "__name__", None) for cmd in app.registered_commands if cmd.callback]
         assert "audit_completeness" in func_names
 
+    def test_audit_major_readiness_command_exists(self) -> None:
+        func_names = [getattr(cmd.callback, "__name__", None) for cmd in app.registered_commands if cmd.callback]
+        assert "audit_major_readiness" in func_names
+
 
 class TestAuditCompletenessCommandExecution:
     @patch("gaokao_vault.db.connection.close_pool", new_callable=AsyncMock)
@@ -120,4 +124,64 @@ class TestAuditCompletenessCommandExecution:
         assert result.exit_code == 0
         mock_fetch_coverage.assert_awaited_once_with(conn, province="吉林", years=[2024, 2025, 2026])
         mock_fetch_gaps.assert_awaited_once_with(conn, province="吉林", years=[2024, 2025, 2026], limit=50)
+        mock_close_pool.assert_awaited_once()
+
+
+class TestAuditMajorReadinessCommandExecution:
+    @patch("gaokao_vault.db.connection.close_pool", new_callable=AsyncMock)
+    @patch("gaokao_vault.db.queries.data_quality.fetch_major_answer_readiness_gaps", new_callable=AsyncMock)
+    @patch("gaokao_vault.db.connection.create_pool", new_callable=AsyncMock)
+    def test_prints_major_readiness_gaps(
+        self,
+        mock_create_pool,
+        mock_fetch_readiness,
+        mock_close_pool,
+    ) -> None:
+        conn = MagicMock()
+        mock_create_pool.return_value = _FakePool(conn)
+        mock_fetch_readiness.return_value = [
+            {
+                "school_name": "长春理工大学",
+                "major_name": "光电信息科学与工程",
+                "readiness_flags": ["missing_admission_min_score_rank", "missing_strength_evidence"],
+                "plan_count": 92,
+                "latest_min_score": None,
+                "latest_min_rank": None,
+            }
+        ]
+
+        result = runner.invoke(
+            app,
+            [
+                "audit-major-readiness",
+                "--province",
+                "吉林",
+                "--plan-year",
+                "2026",
+                "--year",
+                "2023",
+                "--year",
+                "2024",
+                "--year",
+                "2025",
+                "--subject-category-id",
+                "3",
+                "--batch",
+                "本科批",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Major answer readiness gaps" in result.stdout
+        assert "长春理工大学" in result.stdout
+        assert "missing_admission_min_score_rank,missing_strength_evidence" in result.stdout
+        mock_fetch_readiness.assert_awaited_once_with(
+            conn,
+            province="吉林",
+            plan_year=2026,
+            admission_years=[2023, 2024, 2025],
+            subject_category_id=3,
+            batch="本科批",
+            limit=50,
+        )
         mock_close_pool.assert_awaited_once()
