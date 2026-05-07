@@ -340,7 +340,8 @@ def _print_major_readiness_summary(
         f"missing_major_group_code={summary.get('missing_major_group_code', 0)} "
         f"missing_major_code_raw={summary.get('missing_major_code_raw', 0)} "
         f"missing_selection_requirement={summary.get('missing_selection_requirement', 0)} "
-        f"missing_admission_min_score_rank={summary.get('missing_admission_min_score_rank', 0)} "
+        f"missing_admission_min_score={summary.get('missing_admission_min_score', 0)} "
+        f"missing_admission_min_rank={summary.get('missing_admission_min_rank', 0)} "
         f"missing_strength_evidence={summary.get('missing_strength_evidence', 0)}"
     )
     if summary.get("plan_major_count", 0) == 0:
@@ -363,7 +364,9 @@ def _print_major_readiness_gaps(rows: list[dict], summary: dict[str, object]) ->
             f"{row.get('school_name')} {row.get('major_name')}: "
             f"flags={flags} "
             f"plan_count={row.get('plan_count')} "
+            f"latest_min_score_year={row.get('latest_min_score_year')} "
             f"latest_min_score={row.get('latest_min_score')} "
+            f"latest_min_rank_year={row.get('latest_min_rank_year')} "
             f"latest_min_rank={row.get('latest_min_rank')}"
         )
 

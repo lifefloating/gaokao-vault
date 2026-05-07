@@ -43,14 +43,14 @@ _MAJOR_ANSWER_READINESS_CTE_SQL = """
             SELECT
                 mar.school_id,
                 mar.major_id,
-                COUNT(DISTINCT mar.year) FILTER (WHERE mar.min_score IS NOT NULL AND mar.min_rank IS NOT NULL)
-                    AS years_with_min_score_rank,
-                MAX(mar.year) FILTER (WHERE mar.min_score IS NOT NULL AND mar.min_rank IS NOT NULL)
-                    AS latest_admission_year,
+                COUNT(DISTINCT mar.year) FILTER (WHERE mar.min_score IS NOT NULL) AS years_with_min_score,
+                COUNT(DISTINCT mar.year) FILTER (WHERE mar.min_rank IS NOT NULL) AS years_with_min_rank,
+                MAX(mar.year) FILTER (WHERE mar.min_score IS NOT NULL) AS latest_min_score_year,
                 (ARRAY_AGG(mar.min_score ORDER BY mar.year DESC)
-                    FILTER (WHERE mar.min_score IS NOT NULL AND mar.min_rank IS NOT NULL))[1] AS latest_min_score,
+                    FILTER (WHERE mar.min_score IS NOT NULL))[1] AS latest_min_score,
+                MAX(mar.year) FILTER (WHERE mar.min_rank IS NOT NULL) AS latest_min_rank_year,
                 (ARRAY_AGG(mar.min_rank ORDER BY mar.year DESC)
-                    FILTER (WHERE mar.min_score IS NOT NULL AND mar.min_rank IS NOT NULL))[1] AS latest_min_rank,
+                    FILTER (WHERE mar.min_rank IS NOT NULL))[1] AS latest_min_rank,
                 BOOL_OR(mar.max_score IS NOT NULL) AS has_max_score,
                 BOOL_OR(mar.avg_score IS NOT NULL) AS has_avg_score,
                 BOOL_OR(mar.admitted_count IS NOT NULL) AS has_admitted_count
@@ -88,10 +88,12 @@ _MAJOR_ANSWER_READINESS_CTE_SQL = """
                 tpl.major_group_codes,
                 tpl.major_code_raws,
                 tpl.selection_requirements,
-                ads.latest_admission_year,
+                ads.latest_min_score_year,
                 ads.latest_min_score,
+                ads.latest_min_rank_year,
                 ads.latest_min_rank,
-                COALESCE(ads.years_with_min_score_rank, 0)::INTEGER AS years_with_min_score_rank,
+                COALESCE(ads.years_with_min_score, 0)::INTEGER AS years_with_min_score,
+                COALESCE(ads.years_with_min_rank, 0)::INTEGER AS years_with_min_rank,
                 COALESCE(ads.has_max_score, FALSE) AS has_max_score,
                 COALESCE(ads.has_avg_score, FALSE) AS has_avg_score,
                 COALESCE(ads.has_admitted_count, FALSE) AS has_admitted_count,
@@ -102,8 +104,10 @@ _MAJOR_ANSWER_READINESS_CTE_SQL = """
                     CASE WHEN NOT COALESCE(tpl.has_major_code_raw, FALSE) THEN 'missing_major_code_raw' END,
                     CASE WHEN NOT COALESCE(tpl.has_selection_requirement, FALSE)
                         THEN 'missing_selection_requirement' END,
-                    CASE WHEN COALESCE(ads.years_with_min_score_rank, 0) < CARDINALITY($3::INTEGER[])
-                        THEN 'missing_admission_min_score_rank' END,
+                    CASE WHEN COALESCE(ads.years_with_min_score, 0) < CARDINALITY($3::INTEGER[])
+                        THEN 'missing_admission_min_score' END,
+                    CASE WHEN COALESCE(ads.years_with_min_rank, 0) < CARDINALITY($3::INTEGER[])
+                        THEN 'missing_admission_min_rank' END,
                     CASE WHEN NOT COALESCE(strength.has_strength_evidence, FALSE)
                         THEN 'missing_strength_evidence' END
                 ], NULL) AS readiness_flags
@@ -151,8 +155,10 @@ _MAJOR_ANSWER_READINESS_SUMMARY_SQL = "".join((
                 AS missing_major_code_raw,
             COUNT(*) FILTER (WHERE 'missing_selection_requirement' = ANY(readiness_flags))::INTEGER
                 AS missing_selection_requirement,
-            COUNT(*) FILTER (WHERE 'missing_admission_min_score_rank' = ANY(readiness_flags))::INTEGER
-                AS missing_admission_min_score_rank,
+            COUNT(*) FILTER (WHERE 'missing_admission_min_score' = ANY(readiness_flags))::INTEGER
+                AS missing_admission_min_score,
+            COUNT(*) FILTER (WHERE 'missing_admission_min_rank' = ANY(readiness_flags))::INTEGER
+                AS missing_admission_min_rank,
             COUNT(*) FILTER (WHERE 'missing_strength_evidence' = ANY(readiness_flags))::INTEGER
                 AS missing_strength_evidence
         FROM readiness
@@ -394,6 +400,7 @@ async def fetch_major_answer_readiness_summary(
         "missing_major_group_code": 0,
         "missing_major_code_raw": 0,
         "missing_selection_requirement": 0,
-        "missing_admission_min_score_rank": 0,
+        "missing_admission_min_score": 0,
+        "missing_admission_min_rank": 0,
         "missing_strength_evidence": 0,
     }
