@@ -272,11 +272,22 @@ def audit_major_readiness(
 
     async def _run():
         from gaokao_vault.db.connection import close_pool, create_pool
-        from gaokao_vault.db.queries.data_quality import fetch_major_answer_readiness_gaps
+        from gaokao_vault.db.queries.data_quality import (
+            fetch_major_answer_readiness_gaps,
+            fetch_major_answer_readiness_summary,
+        )
 
         pool = await create_pool()
         try:
             async with pool.acquire() as conn:
+                summary = await fetch_major_answer_readiness_summary(
+                    conn,
+                    province=province,
+                    plan_year=plan_year,
+                    admission_years=admission_years,
+                    subject_category_id=subject_category_id,
+                    batch=batch,
+                )
                 rows = await fetch_major_answer_readiness_gaps(
                     conn,
                     province=province,
@@ -289,15 +300,60 @@ def audit_major_readiness(
         finally:
             await close_pool()
 
-        _print_major_readiness_gaps(rows)
+        _print_major_readiness_summary(
+            summary,
+            province=province,
+            plan_year=plan_year,
+            admission_years=admission_years,
+            subject_category_id=subject_category_id,
+            batch=batch,
+        )
+        _print_major_readiness_gaps(rows, summary)
 
     asyncio.run(_run())
 
 
-def _print_major_readiness_gaps(rows: list[dict]) -> None:
+def _print_major_readiness_summary(
+    summary: dict[str, object],
+    *,
+    province: str,
+    plan_year: int,
+    admission_years: list[int],
+    subject_category_id: int | None,
+    batch: str | None,
+) -> None:
+    typer.echo("Major answer readiness scope")
+    typer.echo(
+        "  "
+        f"province={province} "
+        f"plan_year={plan_year} "
+        f"admission_years={','.join(str(year) for year in admission_years)} "
+        f"subject_category_id={subject_category_id} "
+        f"batch={batch}"
+    )
+    typer.echo(
+        "  "
+        f"plan_major_count={summary.get('plan_major_count', 0)} "
+        f"answer_ready_count={summary.get('answer_ready_count', 0)} "
+        f"gap_count={summary.get('gap_count', 0)} "
+        f"missing_plan_count={summary.get('missing_plan_count', 0)} "
+        f"missing_major_group_code={summary.get('missing_major_group_code', 0)} "
+        f"missing_major_code_raw={summary.get('missing_major_code_raw', 0)} "
+        f"missing_selection_requirement={summary.get('missing_selection_requirement', 0)} "
+        f"missing_admission_min_score_rank={summary.get('missing_admission_min_score_rank', 0)} "
+        f"missing_strength_evidence={summary.get('missing_strength_evidence', 0)}"
+    )
+    if summary.get("plan_major_count", 0) == 0:
+        typer.echo("  No matching enrollment plans in requested scope. Check province/year/subject/batch.")
+
+
+def _print_major_readiness_gaps(rows: list[dict], summary: dict[str, object]) -> None:
     typer.echo("Major answer readiness gaps")
     if not rows:
-        typer.echo("  None in requested scope.")
+        if summary.get("plan_major_count", 0) == 0:
+            typer.echo("  None in requested scope.")
+        else:
+            typer.echo("  None in requested scope; all matched plan rows are answer-ready.")
         return
 
     for row in rows:
