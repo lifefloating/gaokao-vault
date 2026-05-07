@@ -6,6 +6,7 @@ from typing import Any, cast
 
 from gaokao_vault.db.queries.data_quality import (
     fetch_major_answer_readiness_gaps,
+    fetch_major_answer_readiness_summary,
     fetch_school_year_plan_gaps,
     fetch_year_data_coverage,
     normalize_completeness_years,
@@ -143,3 +144,50 @@ def test_fetch_major_answer_readiness_gaps_checks_scores_plans_groups_selection_
     assert "UPDATE" not in conn.query.upper()
     assert "DELETE" not in conn.query.upper()
     assert conn.args == ("吉林", 2026, [2023, 2024, 2025], 3, "本科批", 20)
+
+
+def test_fetch_major_answer_readiness_summary_counts_scope_and_gap_flags() -> None:
+    conn = _FakeConnection()
+    conn.rows = [
+        {
+            "plan_major_count": 0,
+            "answer_ready_count": 0,
+            "gap_count": 0,
+            "missing_plan_count": 0,
+            "missing_major_group_code": 0,
+            "missing_major_code_raw": 0,
+            "missing_selection_requirement": 0,
+            "missing_admission_min_score_rank": 0,
+            "missing_strength_evidence": 0,
+        }
+    ]
+
+    summary = asyncio.run(
+        fetch_major_answer_readiness_summary(
+            cast(Any, conn),
+            province="吉林",
+            plan_year=2026,
+            admission_years=[2023, 2024, 2025],
+            subject_category_id=3,
+            batch="本科批",
+        )
+    )
+
+    assert summary == conn.rows[0]
+    assert "enrollment_plans" in conn.query
+    assert "major_admission_results" in conn.query
+    assert "school_major_strength_signals" in conn.query
+    assert "COUNT(*)::INTEGER AS plan_major_count" in conn.query
+    assert "CARDINALITY(readiness_flags) = 0" in conn.query
+    assert "CARDINALITY(readiness_flags) > 0" in conn.query
+    assert "'missing_plan_count' = ANY(readiness_flags)" in conn.query
+    assert "'missing_major_group_code' = ANY(readiness_flags)" in conn.query
+    assert "'missing_major_code_raw' = ANY(readiness_flags)" in conn.query
+    assert "'missing_selection_requirement' = ANY(readiness_flags)" in conn.query
+    assert "'missing_admission_min_score_rank' = ANY(readiness_flags)" in conn.query
+    assert "'missing_strength_evidence' = ANY(readiness_flags)" in conn.query
+    assert "LIMIT $6" not in conn.query
+    assert "INSERT" not in conn.query.upper()
+    assert "UPDATE" not in conn.query.upper()
+    assert "DELETE" not in conn.query.upper()
+    assert conn.args == ("吉林", 2026, [2023, 2024, 2025], 3, "本科批")
