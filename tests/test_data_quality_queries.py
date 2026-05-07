@@ -5,6 +5,7 @@ from datetime import date
 from typing import Any, cast
 
 from gaokao_vault.db.queries.data_quality import (
+    fetch_major_answer_readiness_gaps,
     fetch_school_year_plan_gaps,
     fetch_year_data_coverage,
     normalize_completeness_years,
@@ -89,3 +90,56 @@ def test_fetch_school_year_plan_gaps_lists_admission_rows_without_plan_rows() ->
     assert "plan_records_with_selection_requirement" in conn.query
     assert "LIMIT $3" in conn.query
     assert conn.args == ("吉林", [2023, 2024, 2025], 100)
+
+
+def test_fetch_major_answer_readiness_gaps_checks_scores_plans_groups_selection_and_strength() -> None:
+    conn = _FakeConnection()
+    conn.rows = [
+        {
+            "province_name": "吉林",
+            "plan_year": 2026,
+            "school_name": "长春理工大学",
+            "major_name": "光电信息科学与工程",
+            "readiness_flags": ["missing_admission_min_score_rank"],
+            "answer_ready": False,
+        }
+    ]
+
+    rows = asyncio.run(
+        fetch_major_answer_readiness_gaps(
+            cast(Any, conn),
+            province="吉林",
+            plan_year=2026,
+            admission_years=[2023, 2024, 2025],
+            subject_category_id=3,
+            batch="本科批",
+            limit=20,
+        )
+    )
+
+    assert rows == conn.rows
+    assert "enrollment_plans" in conn.query
+    assert "major_admission_results" in conn.query
+    assert "school_major_strength_signals" in conn.query
+    assert "school_majors" in conn.query
+    assert "min_score IS NOT NULL" in conn.query
+    assert "min_rank IS NOT NULL" in conn.query
+    assert "max_score" in conn.query
+    assert "avg_score" in conn.query
+    assert "admitted_count" in conn.query
+    assert "plan_count" in conn.query
+    assert "major_group_code" in conn.query
+    assert "major_code_raw" in conn.query
+    assert "selection_requirement" in conn.query
+    assert "missing_plan_count" in conn.query
+    assert "missing_major_group_code" in conn.query
+    assert "missing_major_code_raw" in conn.query
+    assert "missing_selection_requirement" in conn.query
+    assert "missing_admission_min_score_rank" in conn.query
+    assert "missing_strength_evidence" in conn.query
+    assert "CARDINALITY($3::INTEGER[])" in conn.query
+    assert "WHERE NOT answer_ready" in conn.query
+    assert "INSERT" not in conn.query.upper()
+    assert "UPDATE" not in conn.query.upper()
+    assert "DELETE" not in conn.query.upper()
+    assert conn.args == ("吉林", 2026, [2023, 2024, 2025], 3, "本科批", 20)
