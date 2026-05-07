@@ -136,7 +136,10 @@ def test_fetch_major_answer_readiness_gaps_checks_scores_plans_groups_selection_
     assert "missing_major_group_code" in conn.query
     assert "missing_major_code_raw" in conn.query
     assert "missing_selection_requirement" in conn.query
-    assert "missing_admission_min_score_rank" in conn.query
+    assert "missing_admission_min_score" in conn.query
+    assert "missing_admission_min_rank" in conn.query
+    assert "latest_min_score" in conn.query
+    assert "latest_min_rank" in conn.query
     assert "missing_strength_evidence" in conn.query
     assert "CARDINALITY($3::INTEGER[])" in conn.query
     assert "WHERE NOT answer_ready" in conn.query
@@ -157,7 +160,8 @@ def test_fetch_major_answer_readiness_summary_counts_scope_and_gap_flags() -> No
             "missing_major_group_code": 0,
             "missing_major_code_raw": 0,
             "missing_selection_requirement": 0,
-            "missing_admission_min_score_rank": 0,
+            "missing_admission_min_score": 0,
+            "missing_admission_min_rank": 0,
             "missing_strength_evidence": 0,
         }
     ]
@@ -184,7 +188,10 @@ def test_fetch_major_answer_readiness_summary_counts_scope_and_gap_flags() -> No
     assert "'missing_major_group_code' = ANY(readiness_flags)" in conn.query
     assert "'missing_major_code_raw' = ANY(readiness_flags)" in conn.query
     assert "'missing_selection_requirement' = ANY(readiness_flags)" in conn.query
-    assert "'missing_admission_min_score_rank' = ANY(readiness_flags)" in conn.query
+    assert "'missing_admission_min_score' = ANY(readiness_flags)" in conn.query
+    assert "'missing_admission_min_rank' = ANY(readiness_flags)" in conn.query
+    assert "COUNT(DISTINCT mar.year) FILTER (WHERE mar.min_score IS NOT NULL)" in conn.query
+    assert "COUNT(DISTINCT mar.year) FILTER (WHERE mar.min_rank IS NOT NULL)" in conn.query
     assert "'missing_strength_evidence' = ANY(readiness_flags)" in conn.query
     assert "LIMIT $6" not in conn.query
     assert "INSERT" not in conn.query.upper()

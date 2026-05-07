@@ -149,16 +149,17 @@ class TestAuditMajorReadinessCommandExecution:
             "missing_major_group_code": 0,
             "missing_major_code_raw": 0,
             "missing_selection_requirement": 0,
-            "missing_admission_min_score_rank": 1,
+            "missing_admission_min_score": 0,
+            "missing_admission_min_rank": 1,
             "missing_strength_evidence": 1,
         }
         mock_fetch_readiness.return_value = [
             {
                 "school_name": "长春理工大学",
                 "major_name": "光电信息科学与工程",
-                "readiness_flags": ["missing_admission_min_score_rank", "missing_strength_evidence"],
+                "readiness_flags": ["missing_admission_min_rank", "missing_strength_evidence"],
                 "plan_count": 92,
-                "latest_min_score": None,
+                "latest_min_score": 552,
                 "latest_min_rank": None,
             }
         ]
@@ -190,7 +191,8 @@ class TestAuditMajorReadinessCommandExecution:
         assert "gap_count=1" in result.stdout
         assert "Major answer readiness gaps" in result.stdout
         assert "长春理工大学" in result.stdout
-        assert "missing_admission_min_score_rank,missing_strength_evidence" in result.stdout
+        assert "missing_admission_min_rank,missing_strength_evidence" in result.stdout
+        assert "latest_min_score=552" in result.stdout
         mock_fetch_summary.assert_awaited_once_with(
             conn,
             province="吉林",
@@ -231,7 +233,8 @@ class TestAuditMajorReadinessCommandExecution:
             "missing_major_group_code": 0,
             "missing_major_code_raw": 0,
             "missing_selection_requirement": 0,
-            "missing_admission_min_score_rank": 0,
+            "missing_admission_min_score": 0,
+            "missing_admission_min_rank": 0,
             "missing_strength_evidence": 0,
         }
         mock_fetch_readiness.return_value = []
