@@ -52,7 +52,7 @@ async def fail_stale_running_tasks(pool: asyncpg.Pool, *, stale_after_seconds: i
                 finished_at = NOW(),
                 error_message = 'Recovered stale running task after scheduler restart'
             WHERE status = 'running'
-              AND started_at < NOW() - MAKE_INTERVAL(secs => $1::INTEGER)
+              AND started_at < NOW() - MAKE_INTERVAL(secs => $1)
             """,
             stale_after_seconds,
         )

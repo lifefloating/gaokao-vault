@@ -45,7 +45,8 @@ def test_fail_stale_running_tasks_marks_old_running_rows_failed() -> None:
     assert updated == 2
     assert "UPDATE crawl_tasks" in pool.conn.query
     assert "status = 'running'" in pool.conn.query
-    assert "started_at < NOW() - MAKE_INTERVAL(secs => $1::INTEGER)" in pool.conn.query
+    assert "MAKE_INTERVAL(secs =>" in pool.conn.query
     assert "$1::TEXT" not in pool.conn.query
+    assert "::INTEGER" not in pool.conn.query
     assert "error_message = 'Recovered stale running task after scheduler restart'" in pool.conn.query
     assert pool.conn.args == (21600,)
