@@ -188,3 +188,15 @@ def test_admission_records_view_is_dropped_before_recreate_to_allow_column_order
     assert schema_sql.count(drop_view_sql) == 1
     assert schema_sql.count(create_view_sql) == 1
     assert schema_sql.find(drop_view_sql) < schema_sql.find(create_view_sql)
+
+
+def test_admission_records_view_appends_min_rank_provenance_to_preserve_existing_column_order() -> None:
+    schema_sql = _normalize_sql(Path("src/gaokao_vault/db/schema.sql").read_text())
+
+    assert "mar.min_rank, mar.plan_count" in schema_sql
+    assert "NULL::INTEGER AS min_rank, ep.plan_count" in schema_sql
+    assert "mar.min_rank_source, mar.min_rank_is_derived" in schema_sql
+    assert "NULL::TEXT AS min_rank_source, FALSE AS min_rank_is_derived" in schema_sql
+    assert schema_sql.find("mar.min_rank, mar.plan_count") < schema_sql.find(
+        "mar.min_rank_source, mar.min_rank_is_derived"
+    )

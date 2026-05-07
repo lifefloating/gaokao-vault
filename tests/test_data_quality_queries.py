@@ -134,12 +134,19 @@ def test_fetch_major_answer_readiness_gaps_checks_scores_plans_groups_selection_
     assert "major_group_code" in conn.query
     assert "major_code_raw" in conn.query
     assert "selection_requirement" in conn.query
+    assert "ep.id AS enrollment_plan_id" in conn.query
+    assert "BOOL_OR(ep.major_group_code IS NOT NULL)" not in conn.query
+    assert "BOOL_OR(ep.major_code_raw IS NOT NULL)" not in conn.query
+    assert "BOOL_OR(ep.selection_requirement IS NOT NULL)" not in conn.query
     assert "missing_plan_count" in conn.query
     assert "missing_major_group_code" in conn.query
     assert "missing_major_code_raw" in conn.query
     assert "missing_selection_requirement" in conn.query
     assert "missing_admission_min_score" in conn.query
     assert "missing_admission_min_rank" in conn.query
+    assert "missing_admission_linkage" in conn.query
+    assert "admission_match_type" in conn.query
+    assert "admission_by_normalized_name" in conn.query
     assert "latest_min_score" in conn.query
     assert "latest_min_score_year" in conn.query
     assert "latest_min_rank" in conn.query
@@ -169,6 +176,7 @@ def test_fetch_major_answer_readiness_summary_counts_scope_and_gap_flags() -> No
             "missing_selection_requirement": 0,
             "missing_admission_min_score": 0,
             "missing_admission_min_rank": 0,
+            "missing_admission_linkage": 0,
             "missing_strength_evidence": 0,
         }
     ]
@@ -197,6 +205,7 @@ def test_fetch_major_answer_readiness_summary_counts_scope_and_gap_flags() -> No
     assert "'missing_selection_requirement' = ANY(readiness_flags)" in conn.query
     assert "'missing_admission_min_score' = ANY(readiness_flags)" in conn.query
     assert "'missing_admission_min_rank' = ANY(readiness_flags)" in conn.query
+    assert "'missing_admission_linkage' = ANY(readiness_flags)" in conn.query
     assert "COUNT(DISTINCT mar.year) FILTER (WHERE mar.min_score IS NOT NULL)" in conn.query
     assert "COUNT(DISTINCT mar.year) FILTER (WHERE mar.min_rank IS NOT NULL)" in conn.query
     assert "'missing_strength_evidence' = ANY(readiness_flags)" in conn.query
@@ -214,8 +223,14 @@ def test_fetch_major_answer_readiness_match_diagnostics_compares_exact_and_norma
             "plan_major_count": 5087,
             "plan_major_with_major_id_count": 4900,
             "exact_major_id_match_count": 155,
+            "exact_major_id_match_with_min_score_count": 150,
+            "exact_major_id_match_with_min_rank_count": 100,
             "normalized_name_match_count": 420,
+            "normalized_name_match_with_min_score_count": 390,
+            "normalized_name_match_with_min_rank_count": 250,
             "normalized_name_only_match_count": 265,
+            "normalized_name_only_match_with_min_score_count": 240,
+            "normalized_name_only_match_with_min_rank_count": 150,
             "unmatched_plan_major_count": 4667,
         }
     ]
@@ -236,7 +251,13 @@ def test_fetch_major_answer_readiness_match_diagnostics_compares_exact_and_norma
     assert "admission_records" in conn.query
     assert "exact_matches" in conn.query
     assert "normalized_name_matches" in conn.query
+    assert "exact_major_id_match_with_min_score_count" in conn.query
+    assert "exact_major_id_match_with_min_rank_count" in conn.query
+    assert "normalized_name_match_with_min_score_count" in conn.query
+    assert "normalized_name_match_with_min_rank_count" in conn.query
     assert "normalized_name_only_match_count" in conn.query
+    assert "normalized_name_only_match_with_min_score_count" in conn.query
+    assert "normalized_name_only_match_with_min_rank_count" in conn.query
     assert "REGEXP_REPLACE" in conn.query
     assert "COALESCE(mar.major_name_raw, adm_major.name)" in conn.query
     assert "mar.min_score IS NOT NULL" in conn.query

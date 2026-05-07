@@ -848,8 +848,6 @@ SELECT
     COALESCE(mar.batch_code, mar.batch) AS batch_code,
     mar.min_score,
     mar.min_rank,
-    mar.min_rank_source,
-    mar.min_rank_is_derived,
     mar.plan_count,
     CONCAT_WS(
         '；',
@@ -879,7 +877,9 @@ SELECT
     NULL::TEXT AS selection_requirement,
     mar.source_url,
     mar.data_source,
-    'major_admission_results'::TEXT AS evidence_source
+    'major_admission_results'::TEXT AS evidence_source,
+    mar.min_rank_source,
+    mar.min_rank_is_derived
 FROM major_admission_results mar
 JOIN provinces p ON p.id = mar.province_id
 LEFT JOIN school_majors sm ON sm.school_id = mar.school_id AND sm.major_id = mar.major_id
@@ -892,8 +892,6 @@ SELECT
     COALESCE(ep.batch_code, ep.batch) AS batch_code,
     NULL::INTEGER AS min_score,
     NULL::INTEGER AS min_rank,
-    NULL::TEXT AS min_rank_source,
-    FALSE AS min_rank_is_derived,
     ep.plan_count,
     CONCAT_WS(
         '；',
@@ -928,7 +926,9 @@ SELECT
     ep.selection_requirement,
     ep.source_url,
     ep.data_source,
-    'enrollment_plans'::TEXT AS evidence_source
+    'enrollment_plans'::TEXT AS evidence_source,
+    NULL::TEXT AS min_rank_source,
+    FALSE AS min_rank_is_derived
 FROM enrollment_plans ep
 JOIN provinces p ON p.id = ep.province_id
 LEFT JOIN school_majors sm ON sm.school_id = ep.school_id AND sm.major_id = ep.major_id;

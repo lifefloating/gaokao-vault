@@ -361,6 +361,7 @@ def _print_major_readiness_summary(
         f"missing_selection_requirement={summary.get('missing_selection_requirement', 0)} "
         f"missing_admission_min_score={summary.get('missing_admission_min_score', 0)} "
         f"missing_admission_min_rank={summary.get('missing_admission_min_rank', 0)} "
+        f"missing_admission_linkage={summary.get('missing_admission_linkage', 0)} "
         f"missing_strength_evidence={summary.get('missing_strength_evidence', 0)}"
     )
     if summary.get("plan_major_count", 0) == 0:
@@ -374,8 +375,16 @@ def _print_major_readiness_match_diagnostics(diagnostics: dict[str, object]) -> 
         f"plan_major_count={diagnostics.get('plan_major_count', 0)} "
         f"plan_major_with_major_id_count={diagnostics.get('plan_major_with_major_id_count', 0)} "
         f"exact_major_id_match_count={diagnostics.get('exact_major_id_match_count', 0)} "
+        f"exact_major_id_match_with_min_score_count={diagnostics.get('exact_major_id_match_with_min_score_count', 0)} "
+        f"exact_major_id_match_with_min_rank_count={diagnostics.get('exact_major_id_match_with_min_rank_count', 0)} "
         f"normalized_name_match_count={diagnostics.get('normalized_name_match_count', 0)} "
+        f"normalized_name_match_with_min_score_count={diagnostics.get('normalized_name_match_with_min_score_count', 0)} "
+        f"normalized_name_match_with_min_rank_count={diagnostics.get('normalized_name_match_with_min_rank_count', 0)} "
         f"normalized_name_only_match_count={diagnostics.get('normalized_name_only_match_count', 0)} "
+        "normalized_name_only_match_with_min_score_count="
+        f"{diagnostics.get('normalized_name_only_match_with_min_score_count', 0)} "
+        "normalized_name_only_match_with_min_rank_count="
+        f"{diagnostics.get('normalized_name_only_match_with_min_rank_count', 0)} "
         f"unmatched_plan_major_count={diagnostics.get('unmatched_plan_major_count', 0)}"
     )
 
@@ -408,6 +417,7 @@ def _print_major_readiness_gaps(rows: list[dict], summary: dict[str, object]) ->
             f"{row.get('school_name')} {row.get('major_name')}: "
             f"flags={flags} "
             f"plan_count={row.get('plan_count')} "
+            f"admission_match_type={row.get('admission_match_type')} "
             f"latest_min_score_year={row.get('latest_min_score_year')} "
             f"latest_min_score={row.get('latest_min_score')} "
             f"latest_min_rank_year={row.get('latest_min_rank_year')} "
