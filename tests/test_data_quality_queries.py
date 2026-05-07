@@ -139,7 +139,12 @@ def test_fetch_major_answer_readiness_gaps_checks_scores_plans_groups_selection_
     assert "missing_admission_min_score" in conn.query
     assert "missing_admission_min_rank" in conn.query
     assert "latest_min_score" in conn.query
+    assert "latest_min_score_year" in conn.query
     assert "latest_min_rank" in conn.query
+    assert "latest_min_rank_year" in conn.query
+    assert "MAX(mar.year) FILTER (WHERE mar.min_score IS NOT NULL) AS latest_min_score_year" in conn.query
+    assert "MAX(mar.year) FILTER (WHERE mar.min_rank IS NOT NULL) AS latest_min_rank_year" in conn.query
+    assert "latest_admission_year" not in conn.query
     assert "missing_strength_evidence" in conn.query
     assert "CARDINALITY($3::INTEGER[])" in conn.query
     assert "WHERE NOT answer_ready" in conn.query

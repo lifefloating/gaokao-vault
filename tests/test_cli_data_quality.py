@@ -160,7 +160,9 @@ class TestAuditMajorReadinessCommandExecution:
                 "readiness_flags": ["missing_admission_min_rank", "missing_strength_evidence"],
                 "plan_count": 92,
                 "latest_min_score": 552,
+                "latest_min_score_year": 2025,
                 "latest_min_rank": None,
+                "latest_min_rank_year": None,
             }
         ]
 
@@ -193,6 +195,8 @@ class TestAuditMajorReadinessCommandExecution:
         assert "长春理工大学" in result.stdout
         assert "missing_admission_min_rank,missing_strength_evidence" in result.stdout
         assert "latest_min_score=552" in result.stdout
+        assert "latest_min_score_year=2025" in result.stdout
+        assert "latest_min_rank_year=None" in result.stdout
         mock_fetch_summary.assert_awaited_once_with(
             conn,
             province="吉林",

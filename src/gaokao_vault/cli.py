@@ -364,7 +364,9 @@ def _print_major_readiness_gaps(rows: list[dict], summary: dict[str, object]) ->
             f"{row.get('school_name')} {row.get('major_name')}: "
             f"flags={flags} "
             f"plan_count={row.get('plan_count')} "
+            f"latest_min_score_year={row.get('latest_min_score_year')} "
             f"latest_min_score={row.get('latest_min_score')} "
+            f"latest_min_rank_year={row.get('latest_min_rank_year')} "
             f"latest_min_rank={row.get('latest_min_rank')}"
         )
 

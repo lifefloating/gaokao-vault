@@ -45,10 +45,10 @@ _MAJOR_ANSWER_READINESS_CTE_SQL = """
                 mar.major_id,
                 COUNT(DISTINCT mar.year) FILTER (WHERE mar.min_score IS NOT NULL) AS years_with_min_score,
                 COUNT(DISTINCT mar.year) FILTER (WHERE mar.min_rank IS NOT NULL) AS years_with_min_rank,
-                MAX(mar.year) FILTER (WHERE mar.min_score IS NOT NULL OR mar.min_rank IS NOT NULL)
-                    AS latest_admission_year,
+                MAX(mar.year) FILTER (WHERE mar.min_score IS NOT NULL) AS latest_min_score_year,
                 (ARRAY_AGG(mar.min_score ORDER BY mar.year DESC)
                     FILTER (WHERE mar.min_score IS NOT NULL))[1] AS latest_min_score,
+                MAX(mar.year) FILTER (WHERE mar.min_rank IS NOT NULL) AS latest_min_rank_year,
                 (ARRAY_AGG(mar.min_rank ORDER BY mar.year DESC)
                     FILTER (WHERE mar.min_rank IS NOT NULL))[1] AS latest_min_rank,
                 BOOL_OR(mar.max_score IS NOT NULL) AS has_max_score,
@@ -88,8 +88,9 @@ _MAJOR_ANSWER_READINESS_CTE_SQL = """
                 tpl.major_group_codes,
                 tpl.major_code_raws,
                 tpl.selection_requirements,
-                ads.latest_admission_year,
+                ads.latest_min_score_year,
                 ads.latest_min_score,
+                ads.latest_min_rank_year,
                 ads.latest_min_rank,
                 COALESCE(ads.years_with_min_score, 0)::INTEGER AS years_with_min_score,
                 COALESCE(ads.years_with_min_rank, 0)::INTEGER AS years_with_min_rank,
