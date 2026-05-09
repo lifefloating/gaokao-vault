@@ -121,7 +121,8 @@ class MajorStrengthSignalSpider(SchoolMajorSpider):
 
     def _extract_major_candidates(self, response: Response) -> list[dict[str, str | None]]:
         candidates = super()._extract_major_candidates(response)
-        for candidate, link in zip(candidates, response.css("div.yxk-zyjs-tab ul li a, div.major-list a.major-link")):
+        links = response.css("div.yxk-zyjs-tab ul li a, div.major-list a.major-link")
+        for candidate, link in zip(candidates, links, strict=True):
             raw_text = _clean_text(" ".join(link.css("::text").getall()))
             candidate["raw_text"] = raw_text
             candidate["name"] = _strip_strength_labels(raw_text) or candidate["name"]

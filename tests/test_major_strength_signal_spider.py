@@ -80,7 +80,10 @@ def test_parse_school_major_page_persists_authoritative_strength_signals() -> No
 
     with (
         patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
-        patch("gaokao_vault.spiders.major_strength_signal_spider.find_major_by_source_id", new=AsyncMock(return_value=None)),
+        patch(
+            "gaokao_vault.spiders.major_strength_signal_spider.find_major_by_source_id",
+            new=AsyncMock(return_value=None),
+        ),
         patch(
             "gaokao_vault.spiders.major_strength_signal_spider.find_major_by_code",
             new=AsyncMock(side_effect=[{"id": 31}, {"id": 32}, {"id": 33}]),
@@ -105,8 +108,9 @@ def test_on_close_refreshes_strength_rollup_for_current_task() -> None:
 
     with (
         patch.object(spider, "_get_pool", new=AsyncMock(return_value=fake_pool)),
-        patch("gaokao_vault.spiders.major_strength_signal_spider.refresh_school_major_strength_rollup", new=AsyncMock())
-        as refresh_rollup,
+        patch(
+            "gaokao_vault.spiders.major_strength_signal_spider.refresh_school_major_strength_rollup", new=AsyncMock()
+        ) as refresh_rollup,
         patch("gaokao_vault.db.queries.crawl_meta.update_task_stats", new=AsyncMock()),
     ):
         asyncio.run(spider.on_close())
