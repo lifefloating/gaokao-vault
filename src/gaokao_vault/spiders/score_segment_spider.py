@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
+from functools import cache
 from html import unescape
 from pathlib import Path
 from typing import ClassVar
@@ -428,8 +429,7 @@ class ScoreSegmentSpider(BaseGaokaoSpider):
             )
             return []
 
-        prompt_path = Path(__file__).parents[1] / "vision" / "prompts" / "score_segment_extract.txt"
-        prompt = prompt_path.read_text(encoding="utf-8").format(
+        prompt = _score_segment_prompt_template().format(
             province_name=province_name,
             year=year,
             subject_hint=subject_hint or "",
@@ -461,6 +461,12 @@ class ScoreSegmentSpider(BaseGaokaoSpider):
 def _latest_eol_index_year() -> int:
     now = datetime.now()
     return now.year if now.month >= 7 else now.year - 1
+
+
+@cache
+def _score_segment_prompt_template() -> str:
+    prompt_path = Path(__file__).parents[1] / "vision" / "prompts" / "score_segment_extract.txt"
+    return prompt_path.read_text(encoding="utf-8")
 
 
 def _node_text(node) -> str:

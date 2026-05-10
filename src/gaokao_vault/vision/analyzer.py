@@ -114,11 +114,21 @@ class VisionAnalyzer:
             await stream.close()
             content = content.strip()
         except Exception:
-            logger.exception("Vision API call failed for image URL %s %d", province_name, year)
+            logger.exception(
+                "Vision API call failed for image URL %s (%s %d)",
+                image_url,
+                province_name,
+                year,
+            )
             return []
 
         if not content:
-            logger.warning("Vision API returned empty content for image URL %s %d", province_name, year)
+            logger.warning(
+                "Vision API returned empty content for image URL %s (%s %d)",
+                image_url,
+                province_name,
+                year,
+            )
             return []
         return self._parse_response(content, province_name, year)
 
