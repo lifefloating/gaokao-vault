@@ -81,6 +81,47 @@ class VisionAnalyzer:
             return []
         return self._parse_response(content, province_name, year)
 
+    async def analyze_image_url(
+        self,
+        image_url: str,
+        *,
+        prompt: str,
+        province_name: str,
+        year: int,
+    ) -> list[dict]:
+        """Send an already-public image URL to the Vision API and parse a JSON list."""
+        try:
+            input_msg: EasyInputMessageParam = {
+                "role": "user",
+                "content": [
+                    ResponseInputTextParam(type="input_text", text=prompt),
+                    ResponseInputImageParam(
+                        type="input_image",
+                        detail="auto",
+                        image_url=image_url,
+                    ),
+                ],
+            }
+            stream = await self.client.responses.create(
+                model=self._model,
+                input=[input_msg],
+                stream=True,
+            )
+            content = ""
+            async for event in stream:
+                if event.type == "response.output_text.delta":
+                    content += event.delta
+            await stream.close()
+            content = content.strip()
+        except Exception:
+            logger.exception("Vision API call failed for image URL %s %d", province_name, year)
+            return []
+
+        if not content:
+            logger.warning("Vision API returned empty content for image URL %s %d", province_name, year)
+            return []
+        return self._parse_response(content, province_name, year)
+
     def _resolve_image_url(self, image_path: Path, province_name: str, year: int) -> str | None:
         """Upload to S3 and return presigned URL, or fall back to base64 data URL."""
         if self._s3:

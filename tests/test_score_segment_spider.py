@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, patch
 from scrapling.parser import Adaptor
 
 from gaokao_vault.config import DatabaseConfig
-from gaokao_vault.spiders.score_segment_spider import ScoreSegmentSpider, _segment_tables
+from gaokao_vault.spiders.score_segment_spider import (
+    DXSBB_SEGMENT_INDEX_URL,
+    ScoreSegmentSpider,
+    _segment_tables,
+)
 
 
 class _Acquire:
@@ -65,10 +69,13 @@ def test_start_requests_uses_province_code_and_recent_year_window() -> None:
     assert [request.url for request in requests] == [
         "https://www.eol.cn/e_html/gk/gkfsd/",
         "https://www.eol.cn/e_html/gk/gkfsd/2024.shtml",
+        DXSBB_SEGMENT_INDEX_URL,
     ]
     assert requests[0].callback == spider.parse_index
+    assert requests[2].callback == spider.parse_dxsbb_index
     assert requests[0].meta["years"] == [2024, 2025, 2026]
     assert requests[0].meta["provinces"] == [{"id": 7, "name": "吉林", "code": "22"}]
+    assert requests[2].meta["years"] == [2024, 2025, 2026]
 
 
 def _make_response(html: str, url: str, meta: dict | None = None):
@@ -116,6 +123,44 @@ def test_parse_index_yields_eol_article_requests_for_matching_province_and_year(
     assert [request.meta["province_id"] for request in requests] == [7, 7]
     assert [request.meta["year"] for request in requests] == [2025, 2025]
     assert all(request.callback == spider.parse for request in requests)
+
+
+def test_parse_dxsbb_index_yields_allowed_segment_article_requests() -> None:
+    spider = _make_spider()
+    response = _make_response(
+        """
+        <html><body>
+          <h2><a href="/news/list_538.html">吉林</a><a href="/news/list_538.html">更多</a></h2>
+          <ul>
+            <li><a href="/news/117704.html">2025吉林高考一分一段表(物理类+历史类)</a></li>
+            <li><a href="/news/148821.html">2025吉林高考一分一段表(物理类)</a></li>
+            <li><a href="/news/148820.html">2023吉林高考一分一段表(理科)</a></li>
+            <li><a href="/news/other.html">2025吉林高考分数线</a></li>
+          </ul>
+        </body></html>
+        """,
+        DXSBB_SEGMENT_INDEX_URL,
+        {"provinces": [{"id": 7, "name": "吉林", "code": "22"}], "years": [2024, 2025]},
+    )
+
+    requests = asyncio.run(_collect(spider.parse_dxsbb_index(response)))
+
+    assert [request.url for request in requests] == [
+        "https://www.dxsbb.com/news/list_538.html",
+        "https://www.dxsbb.com/news/117704.html",
+        "https://www.dxsbb.com/news/148821.html",
+    ]
+    assert requests[0].callback == spider.parse_dxsbb_index
+    assert requests[1].callback == spider.parse_dxsbb_article
+    assert requests[1].meta == {
+        "province_id": 7,
+        "province_name": "吉林",
+        "province_code": "22",
+        "year": 2025,
+        "subject_hint": "物理类",
+        "data_source": "dxsbb.com",
+        "title": "2025吉林高考一分一段表(物理类+历史类)",
+    }
 
 
 def test_segment_tables_prefers_trs_editor_tables_without_duplicate() -> None:
@@ -183,3 +228,59 @@ def test_parse_eol_score_segment_article_table() -> None:
     assert all(item["subject_category_id"] == 3 for item in items)
     assert len(sink.items) == 2
     assert spider._stats["updated"] == 2
+
+
+def test_parse_dxsbb_article_uses_vision_for_image_segment_table() -> None:
+    spider = _make_spider()
+    sink = _FakeSink()
+    spider._sink = cast(Any, sink)
+    response = _make_response(
+        """
+        <html><body>
+          <div id="article">
+            <h1>2025吉林高考一分一段表(物理类)</h1>
+            <div class="content">
+              <p>以下是吉林2025年高考物理类一分一段表。</p>
+              <img src="/uploads/allimg/250625/1-250625160602.jpg" alt="2025吉林高考一分一段表(物理类)">
+            </div>
+          </div>
+        </body></html>
+        """,
+        "https://www.dxsbb.com/news/148821.html",
+        {
+            "province_id": 7,
+            "province_name": "吉林",
+            "province_code": "22",
+            "year": 2025,
+            "subject_hint": "物理类",
+            "data_source": "dxsbb.com",
+        },
+    )
+
+    with (
+        patch.object(spider, "_resolve_subject_category", new=AsyncMock(return_value=3)),
+        patch.object(
+            spider,
+            "_analyze_dxsbb_segment_image",
+            new=AsyncMock(
+                return_value=[
+                    {"category": "物理类", "score": 600, "segment_count": 120, "cumulative_count": 5529},
+                    {"category": "物理类", "score": 599, "segment_count": 130, "cumulative_count": 5659},
+                ]
+            ),
+        ) as analyze_image,
+    ):
+        items = asyncio.run(_collect(spider.parse_dxsbb_article(response)))
+
+    analyze_image.assert_awaited_once_with(
+        "https://www.dxsbb.com/uploads/allimg/250625/1-250625160602.jpg",
+        province_name="吉林",
+        year=2025,
+        subject_hint="物理类",
+    )
+    assert [(item["score"], item["segment_count"], item["cumulative_count"]) for item in items] == [
+        (600, 120, 5529),
+        (599, 130, 5659),
+    ]
+    assert all(item["subject_category_id"] == 3 for item in items)
+    assert len(sink.items) == 2
