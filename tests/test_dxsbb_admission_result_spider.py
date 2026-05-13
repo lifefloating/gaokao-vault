@@ -35,15 +35,22 @@ class _FakeConnection:
             return {"status": "success", "failed_items": 0, "finished_at": "2026-05-02T00:00:00"}
         if "FROM schools" in query and args == ("太原师范学院",):
             return {"id": 102, "name": "太原师范学院"}
+        if "FROM schools" in query and args == ("长春理工大学",):
+            return {"id": 228, "name": "长春理工大学"}
+        if "FROM score_segments" in query:
+            score = args[3]
+            return {"score": score, "cumulative_count": score * 10}
         return None
 
     async def fetch(self, query: str, *args):
         if "FROM provinces" in query:
-            return [{"id": 14, "name": "山西"}]
+            return [{"id": 14, "name": "山西"}, {"id": 7, "name": "吉林"}]
         if "FROM school_majors" in query and args == (102, "英语", None):
             return [{"id": 31}]
         if "FROM school_majors" in query and args == (102, "书法学", None):
             return [{"id": 32}]
+        if "FROM school_majors" in query and args == (228, "光电信息科学与工程", None):
+            return [{"id": 56}]
         if "FROM majors" in query and args == ("历史学", None):
             return [{"id": 40}]
         return []
@@ -137,10 +144,11 @@ def test_parse_article_persists_major_admission_results_from_score_table() -> No
         "https://www.dxsbb.com/news/32168.html",
     )
     process_item = AsyncMock(return_value="new")
+    resolve_subject_category = AsyncMock(return_value=7)
 
     with (
         patch.object(spider, "_get_pool", new=AsyncMock(return_value=_FakePool(_FakeConnection()))),
-        patch.object(spider, "_resolve_subject_category", new=AsyncMock(return_value=7)),
+        patch.object(spider, "_resolve_subject_category", new=resolve_subject_category),
         patch.object(spider, "process_item", new=process_item),
     ):
         items = asyncio.run(_collect(spider.parse_article(response)))
@@ -157,13 +165,13 @@ def test_parse_article_persists_major_admission_results_from_score_table() -> No
             "batch_category": "普通批",
             "batch_segment": None,
             "min_score": 484,
-            "min_rank": None,
-            "min_rank_source": None,
-            "min_rank_is_derived": False,
+            "min_rank": 4840,
+            "min_rank_source": "score_segments",
+            "min_rank_is_derived": True,
             "avg_score": 498,
-            "avg_rank": None,
+            "avg_rank": 4980,
             "max_score": 533,
-            "max_rank": None,
+            "max_rank": 5330,
             "admitted_count": None,
             "plan_count": None,
             "school_code_raw": None,
@@ -183,9 +191,10 @@ def test_parse_article_persists_major_admission_results_from_score_table() -> No
             "source_url": "https://www.dxsbb.com/news/32168.html",
             "data_source": "dxsbb.com",
             "source_updated_at": None,
-            "quality_flags": ["missing_min_rank", "missing_admitted_count"],
+            "quality_flags": ["missing_admitted_count"],
         }
     ]
+    resolve_subject_category.assert_awaited_once_with("物理类")
     process_item.assert_awaited_once()
 
 
@@ -230,6 +239,62 @@ def test_parse_article_infers_year_from_section_heading_when_table_has_no_year_c
     assert items[0]["batch"] == "艺术本科批"
     assert items[0]["min_score"] == 486
     assert items[0]["max_score"] == 498
+
+
+def test_parse_article_infers_year_and_province_from_wrapped_table_heading() -> None:
+    spider = _make_spider()
+    response = _make_response(
+        """
+        <html><body>
+          <div class="position"><a href="/school/长春理工大学.html">长春理工大学</a></div>
+          <div id="article">
+            <h1>2025长春理工大学录取分数线\uff08含2023-2024历年\uff09</h1>
+            <div class="content">
+              <h2>1、2025长春理工大学录取分数线</h2>
+              <p style="text-align:center;"><strong>2025年吉林录取分数线</strong></p>
+              <div class="tablebox">
+                <table cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td>批次</td><td>科类</td><td>专业\uff08类\uff09名称</td><td>省控线</td>
+                    <td>最高分</td><td>最低分</td><td>平均分</td>
+                  </tr>
+                  <tr>
+                    <td>普通本科批</td><td>物理类</td><td>光电信息科学与工程</td><td>345</td>
+                    <td>612</td><td>584</td><td>594.5</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </div>
+        </body></html>
+        """,
+        "https://www.dxsbb.com/news/32401.html",
+    )
+
+    with (
+        patch.object(spider, "_get_pool", new=AsyncMock(return_value=_FakePool(_FakeConnection()))),
+        patch.object(spider, "_resolve_subject_category", new=AsyncMock(return_value=3)),
+        patch.object(spider, "process_item", new=AsyncMock(return_value="new")),
+    ):
+        items = asyncio.run(_collect(spider.parse_article(response)))
+
+    assert len(items) == 1
+    assert items[0]["school_id"] == 228
+    assert items[0]["major_id"] == 56
+    assert items[0]["province_id"] == 7
+    assert items[0]["year"] == 2025
+    assert items[0]["batch"] == "普通本科批"
+    assert items[0]["batch_code"] == "regular"
+    assert items[0]["batch_category"] == "普通批"
+    assert items[0]["subject_category_raw"] == "物理类"
+    assert items[0]["min_score"] == 584
+    assert items[0]["min_rank"] == 5840
+    assert items[0]["min_rank_source"] == "score_segments"
+    assert items[0]["min_rank_is_derived"] is True
+    assert items[0]["max_score"] == 612
+    assert items[0]["max_rank"] == 6120
+    assert items[0]["avg_score"] == 594
+    assert items[0]["avg_rank"] == 5940
 
 
 def test_parse_article_accepts_globally_unique_major_when_school_major_mapping_is_missing() -> None:
